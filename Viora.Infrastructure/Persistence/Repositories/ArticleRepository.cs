@@ -7,6 +7,20 @@ namespace Viora.Infrastructure.Persistence.Repositories;
 
 public sealed class ArticleRepository(AppDbContext dbContext) : IArticleRepository
 {
+    public async Task<MyArticlesResponse> GetMineAsync(Guid userId, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var query = dbContext.Posts.AsNoTracking().Where(ArticleAccess.OwnArticles(userId));
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query.OrderByDescending(post => post.CreatedAt).ThenByDescending(post => post.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(post => new ManagedArticleResponse(post.Id, post.Content ?? string.Empty, post.Status,
+                post.CreatedAt, post.ArticleBlocks.Where(block => block.BlockType == ArticleBlockType.Image)
+                    .OrderBy(block => block.OrderIndex).Select(block => block.MediaUrl).FirstOrDefault(),
+                post.ViewCount, true))
+            .ToListAsync(cancellationToken);
+        return new MyArticlesResponse(page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize), items);
+    }
+
     public Task<AccountStyle?> GetUserAccountStyleAsync(Guid userId, CancellationToken cancellationToken) =>
         dbContext.Users.Where(x => x.Id == userId)
             .Select(x => (AccountStyle?)x.AccountStyle)
@@ -83,9 +97,7 @@ public sealed class ArticleRepository(AppDbContext dbContext) : IArticleReposito
             return Result<ArticleResponse>.Failure(PostInteractionError.NotFound, "Không tìm thấy bài viết dài.");
 
         var isOwner = access.UserId == userId;
-        var canView = access.Status == PostStatus.Published &&
-            (isOwner || access.Visibility == PostVisibility.Public ||
-             (access.Visibility == PostVisibility.Followers && access.IsFollower));
+        var canView = ArticleAccess.CanView(access.Status, isOwner, access.Visibility, access.IsFollower);
         if (!canView)
             return Result<ArticleResponse>.Failure(PostInteractionError.Forbidden, "Bạn không có quyền xem bài viết này.");
 

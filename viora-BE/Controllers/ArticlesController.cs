@@ -14,6 +14,18 @@ namespace viora_BE.Controllers;
 [Authorize]
 public sealed class ArticlesController(IMediator mediator, IMediaStorage mediaStorage) : ControllerBase
 {
+    [HttpGet("mine")]
+    [ProducesResponseType<MyArticlesResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> Mine(
+        [FromQuery, System.ComponentModel.DataAnnotations.Range(1, int.MaxValue)] int page = 1,
+        [FromQuery, System.ComponentModel.DataAnnotations.Range(1, 100)] int pageSize = 15,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+        return ToResult(await mediator.Send(new GetMyArticlesQuery(userId, page, pageSize), cancellationToken));
+    }
+
     [HttpGet("recommended")]
     [ProducesResponseType<PostFeedResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]

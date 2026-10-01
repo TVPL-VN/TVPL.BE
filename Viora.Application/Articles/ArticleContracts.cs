@@ -1,4 +1,5 @@
 using MediatR;
+using System.Linq.Expressions;
 using Viora.Application.Posts;
 using Viora.Domain.Entities;
 
@@ -36,6 +37,17 @@ public sealed record UpdateArticleCommand(
 
 public sealed record GetArticleQuery(Guid UserId, Guid ArticleId)
     : IRequest<Result<ArticleResponse>>;
+
+public sealed record GetMyArticlesQuery(Guid UserId, int Page, int PageSize)
+    : IRequest<Result<MyArticlesResponse>>;
+
+public sealed record ManagedArticleResponse(
+    Guid Id, string Title, PostStatus Status, DateTime CreatedAt,
+    string? ThumbnailUrl, int ViewCount, bool IsOwner);
+
+public sealed record MyArticlesResponse(
+    int Page, int PageSize, int TotalItems, int TotalPages,
+    IReadOnlyList<ManagedArticleResponse> Items);
 
 public sealed record ArticleBlockResponse(
     Guid Id,
@@ -76,12 +88,25 @@ public sealed record ArticleResponse(
 
 public interface IArticleRepository
 {
+    Task<MyArticlesResponse> GetMineAsync(Guid userId, int page, int pageSize, CancellationToken cancellationToken);
     Task<AccountStyle?> GetUserAccountStyleAsync(Guid userId, CancellationToken cancellationToken);
     Task AddAsync(Post article, CancellationToken cancellationToken);
     Task<Post?> GetForUpdateAsync(Guid articleId, CancellationToken cancellationToken);
     Task PrepareBlockOrderUpdateAsync(Post article, CancellationToken cancellationToken);
     Task<bool> RecordViewAsync(Guid userId, Guid articleId, CancellationToken cancellationToken);
     Task<Result<ArticleResponse>> GetAsync(Guid userId, Guid articleId, CancellationToken cancellationToken);
+}
+
+public static class ArticleAccess
+{
+    public static Expression<Func<Post, bool>> OwnArticles(Guid userId) => post =>
+        post.UserId == userId && post.PostType == PostType.Article &&
+        post.Status == PostStatus.Published && post.DeletedAt == null;
+
+    public static bool CanView(PostStatus status, bool isOwner, PostVisibility visibility, bool isFollower) =>
+        status != PostStatus.Deleted &&
+        (isOwner || (status == PostStatus.Published &&
+            (visibility == PostVisibility.Public || (visibility == PostVisibility.Followers && isFollower))));
 }
 
 public static class ArticleReadingTime

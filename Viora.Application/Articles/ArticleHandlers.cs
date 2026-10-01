@@ -125,7 +125,7 @@ public sealed class GetArticleHandler(IArticleRepository repository)
     public async Task<Result<ArticleResponse>> Handle(GetArticleQuery request, CancellationToken cancellationToken)
     {
         var result = await repository.GetAsync(request.UserId, request.ArticleId, cancellationToken);
-        if (!result.IsSuccess || result.Value is null) return result;
+        if (!result.IsSuccess || result.Value is null || result.Value.Status != PostStatus.Published) return result;
         var isFirstView = await repository.RecordViewAsync(
             request.UserId,
             request.ArticleId,
@@ -134,5 +134,21 @@ public sealed class GetArticleHandler(IArticleRepository repository)
         {
             ViewCount = result.Value.ViewCount + (isFirstView ? 1 : 0)
         });
+    }
+}
+
+public sealed class GetMyArticlesHandler(IArticleRepository repository)
+    : IRequestHandler<GetMyArticlesQuery, Result<MyArticlesResponse>>
+{
+    public async Task<Result<MyArticlesResponse>> Handle(GetMyArticlesQuery request, CancellationToken cancellationToken)
+    {
+        var style = await repository.GetUserAccountStyleAsync(request.UserId, cancellationToken);
+        if (style is null || !style.Value.CanCreateArticle())
+            return Result<MyArticlesResponse>.Failure(PostInteractionError.Forbidden, "Bạn không có quyền quản lý bài báo.");
+        if (request.Page < 1 || request.PageSize is < 1 or > 100 ||
+            (long)(request.Page - 1) * request.PageSize > int.MaxValue)
+            return Result<MyArticlesResponse>.Failure(PostInteractionError.Invalid, "Thông tin phân trang không hợp lệ.");
+        return Result<MyArticlesResponse>.Success(await repository.GetMineAsync(
+            request.UserId, request.Page, request.PageSize, cancellationToken));
     }
 }
