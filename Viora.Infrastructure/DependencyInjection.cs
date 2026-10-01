@@ -1,0 +1,215 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Viora.Infrastructure.Persistence;
+using Viora.Application.Accounts;
+using Viora.Infrastructure.Persistence.Repositories;
+using Viora.Infrastructure.Security;
+using Microsoft.Extensions.Options;
+using System.Text;
+using Viora.Application.Users;
+using Viora.Infrastructure.Media;
+using Viora.Application.Posts;
+using Viora.Application.Hashtags;
+using Viora.Application.Social;
+using FluentValidation;
+using Viora.Application.Notifications;
+using Viora.Application.Realtime;
+using Viora.Application.Chat;
+using Viora.Application.Calls;
+using Viora.Infrastructure.Realtime;
+using Microsoft.AspNetCore.SignalR;
+using Viora.Application.Sharing;
+using Viora.Infrastructure.Sharing;
+using Viora.Application.Admin;
+using Viora.Application.Mentions;
+using Viora.Application.GroupCalls;
+using Viora.Application.Legal;
+using Viora.Infrastructure.GroupCalls;
+using Viora.Application.Articles;
+using Viora.Application.MiniApps;
+using Viora.Infrastructure.MiniApps;
+using Viora.Application.Stickers;
+
+namespace Viora.Infrastructure;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddInfrastructure(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        var connectionString = configuration.GetConnectionString("DefaultConnection");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException(
+                "Missing required configuration 'ConnectionStrings:DefaultConnection'. " +
+                "Set it with the environment variable ConnectionStrings__DefaultConnection or User Secrets.");
+        }
+
+        services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
+        var jwtOptions = new JwtOptions
+        {
+            Key = configuration["Jwt:Key"] ?? string.Empty,
+            Issuer = configuration["Jwt:Issuer"] ?? "viora-BE",
+            Audience = configuration["Jwt:Audience"] ?? "viora-client"
+        };
+        if (int.TryParse(configuration["Jwt:AccessTokenMinutes"], out var accessTokenMinutes))
+        {
+            jwtOptions.AccessTokenMinutes = accessTokenMinutes;
+        }
+        if (int.TryParse(configuration["Jwt:RefreshTokenDays"], out var refreshTokenDays))
+        {
+            jwtOptions.RefreshTokenDays = refreshTokenDays;
+        }
+        if (int.TryParse(configuration["Jwt:RefreshTokenRetentionDays"], out var refreshTokenRetentionDays))
+        {
+            jwtOptions.RefreshTokenRetentionDays = refreshTokenRetentionDays;
+        }
+        if (jwtOptions.RefreshTokenRetentionDays is < 7 or > 30)
+        {
+            throw new InvalidOperationException(
+                "Jwt:RefreshTokenRetentionDays must be between 7 and 30.");
+        }
+        if (Encoding.UTF8.GetByteCount(jwtOptions.Key) < 32)
+        {
+            throw new InvalidOperationException(
+                "Missing or invalid configuration 'Jwt:Key'. Set at least 32 UTF-8 bytes " +
+                "in appsettings.json or with the environment variable Jwt__Key.");
+        }
+        services.AddSingleton(Options.Create(jwtOptions));
+        services.AddSingleton<ITokenService, JwtTokenService>();
+        services.AddHostedService<RefreshTokenCleanupHostedService>();
+        services.AddSingleton(Options.Create(new LiveKitOptions
+        {
+            Url = configuration["LIVEKIT_URL"] ?? string.Empty,
+            ApiKey = configuration["LIVEKIT_API_KEY"] ?? string.Empty,
+            ApiSecret = configuration["LIVEKIT_API_SECRET"] ?? string.Empty
+        }));
+        services.AddSingleton<ILiveKitTokenIssuer, LiveKitTokenIssuer>();
+        services.AddScoped<IGroupCallService, GroupCallService>();
+        var cloudinaryOptions = new CloudinaryOptions
+        {
+            CloudName = configuration["Cloudinary:CloudName"] ?? string.Empty,
+            ApiKey = configuration["Cloudinary:ApiKey"] ?? string.Empty,
+            ApiSecret = configuration["Cloudinary:ApiSecret"] ?? string.Empty
+        };
+        if (string.IsNullOrWhiteSpace(cloudinaryOptions.CloudName) ||
+            string.IsNullOrWhiteSpace(cloudinaryOptions.ApiKey) ||
+            string.IsNullOrWhiteSpace(cloudinaryOptions.ApiSecret))
+        {
+            throw new InvalidOperationException(
+                "Missing Cloudinary configuration. Set Cloudinary:CloudName, Cloudinary:ApiKey, " +
+                "and Cloudinary:ApiSecret with User Secrets or environment variables.");
+        }
+        services.AddSingleton(Options.Create(cloudinaryOptions));
+        services.AddSingleton<IProfileImageStorage, CloudinaryProfileImageStorage>();
+        services.AddSingleton<IMediaStorage, CloudinaryMediaStorage>();
+        services.AddSingleton<IStickerMediaStorage>(provider => (CloudinaryMediaStorage)provider.GetRequiredService<IMediaStorage>());
+        services.AddScoped<IValidator<CreatePostCommand>, CreatePostValidator>();
+        services.AddScoped<IValidator<CreateArticleCommand>, CreateArticleValidator>();
+        services.AddScoped<IValidator<UpdateArticleCommand>, UpdateArticleValidator>();
+        services.AddScoped<IValidator<RecordArticleInteractionCommand>, RecordArticleInteractionValidator>();
+        services.AddScoped<IValidator<CreateReelCommand>, CreateReelValidator>();
+        services.AddScoped<IValidator<ReactPostCommand>, ReactPostValidator>();
+        services.AddScoped<IValidator<CreateCommentCommand>, CreateCommentValidator>();
+        services.AddScoped<IValidator<ReplyCommentCommand>, ReplyCommentValidator>();
+        services.AddScoped<IValidator<ToggleCommentLikeCommand>, ToggleCommentLikeValidator>();
+        services.AddScoped<IValidator<ReportPostCommand>, ReportPostValidator>();
+        services.AddScoped<IValidator<GetPostCommentsQuery>, GetPostCommentsValidator>();
+        services.AddScoped<IValidator<GetCommentRepliesQuery>, GetCommentRepliesValidator>();
+        services.AddScoped<IValidator<GetProfileFeedQuery>, GetProfileFeedValidator>();
+        services.AddScoped<IValidator<CreateHashtagCommand>, CreateHashtagValidator>();
+        services.AddScoped<IValidator<SearchHashtagsQuery>, SearchHashtagsValidator>();
+        services.AddScoped<IValidator<ToggleFollowCommand>, ToggleFollowValidator>();
+        services.AddScoped<IValidator<SendFriendRequestCommand>, SendFriendRequestValidator>();
+        services.AddScoped<IValidator<GetFriendRequestsQuery>, GetFriendRequestsValidator>();
+        services.AddScoped<IValidator<GetFriendshipsQuery>, GetFriendshipsValidator>();
+        services.AddScoped<IValidator<AcceptFriendRequestCommand>, AcceptFriendRequestValidator>();
+        services.AddScoped<IValidator<RejectFriendRequestCommand>, RejectFriendRequestValidator>();
+        services.AddScoped<IValidator<DeleteFriendCommand>, DeleteFriendValidator>();
+        services.AddScoped<IValidator<GetRelationshipQuery>, GetRelationshipValidator>();
+        services.AddScoped<IValidator<GetMyStatisticsQuery>, GetMyStatisticsValidator>();
+        services.AddScoped<IValidator<GetUserProfileQuery>, GetUserProfileValidator>();
+        services.AddScoped<IValidator<GetUserSettingsQuery>, GetUserSettingsValidator>();
+        services.AddScoped<IValidator<UpdateUserSettingsCommand>, UpdateUserSettingsValidator>();
+        services.AddScoped<IValidator<RegisterDeviceTokenCommand>, RegisterDeviceTokenValidator>();
+        services.AddScoped<IValidator<UnregisterDeviceTokenCommand>, UnregisterDeviceTokenValidator>();
+        services.AddScoped<IValidator<ChangePasswordCommand>, ChangePasswordValidator>();
+        services.AddScoped<IValidator<GetForgotPasswordStatusQuery>, GetForgotPasswordStatusValidator>();
+        services.AddScoped<IValidator<SetForgotPasswordPhoneCommand>, SetForgotPasswordPhoneValidator>();
+        services.AddScoped<IValidator<ResetForgottenPasswordCommand>, ResetForgottenPasswordValidator>();
+        services.AddScoped<IValidator<SendChatMessageCommand>, SendChatMessageValidator>();
+        services.AddScoped<IValidator<CreateCallCommand>, CreateCallValidator>();
+        services.AddScoped<IValidator<ForwardChatMessageCommand>, ForwardChatMessageValidator>();
+        services.AddScoped<IValidator<CreatePrivateConversationCommand>, CreatePrivateConversationValidator>();
+        services.AddScoped<IValidator<JoinGroupCommand>, JoinGroupValidator>();
+        services.AddScoped<ChatMessageDeliveryService>();
+        services.AddScoped<CallDeliveryService>();
+        services.AddScoped<IIceServerProvider, IceServerProvider>();
+        services.AddScoped<IValidator<GetShortVideosQuery>, GetShortVideosValidator>();
+        services.AddScoped<IValidator<ToggleVideoReactionCommand>, ToggleVideoReactionValidator>();
+        services.AddScoped<IValidator<ToggleVideoSaveCommand>, ToggleVideoSaveValidator>();
+        services.AddScoped<IValidator<ShareVideoCommand>, ShareVideoValidator>();
+        services.AddScoped<IValidator<CreateVideoCommentCommand>, CreateVideoCommentValidator>();
+        services.AddScoped<IValidator<ReplyVideoCommentCommand>, ReplyVideoCommentValidator>();
+        services.AddScoped<IValidator<GetVideoCommentsQuery>, GetVideoCommentsValidator>();
+        services.AddScoped<IValidator<GetVideoRepliesQuery>, GetVideoRepliesValidator>();
+        services.AddScoped<IValidator<DeleteVideoCommentCommand>, DeleteVideoCommentValidator>();
+        services.AddScoped<IAccountRepository, AccountRepository>();
+        services.AddScoped<IGoogleLoginRepository, GoogleLoginRepository>();
+        services.AddScoped<IForgotPasswordRepository, ForgotPasswordRepository>();
+        services.AddScoped<IPasswordHasher, AspNetIdentityPasswordHasher>();
+        services.AddScoped<IPasswordResetHasher, BCryptPasswordResetHasher>();
+        services.AddScoped<IFirebaseIdentityTokenVerifier, FirebaseIdentityTokenVerifier>();
+        services.AddScoped<IGoogleIdentityTokenVerifier, GoogleIdentityTokenVerifier>();
+        services.AddScoped<IAccountService, AccountService>();
+        services.AddScoped<IGoogleLoginService, GoogleLoginService>();
+        services.AddScoped<IUserProfileRepository, UserProfileRepository>();
+        services.AddScoped<IUserProfileService, UserProfileService>();
+        services.AddScoped<IUserSettingsRepository, UserSettingsRepository>();
+        services.AddScoped<IPostFeedRepository, PostFeedRepository>();
+        services.AddScoped<IProfileFeedRepository, ProfileFeedRepository>();
+        services.AddScoped<IVideoFeedRepository, VideoFeedRepository>();
+        services.AddScoped<IPostRepository, PostRepository>();
+        services.AddScoped<IArticleRepository, ArticleRepository>();
+        services.AddScoped<IArticleInteractionRepository, ArticleInteractionRepository>();
+        services.AddScoped<IArticleRecommendationService, ArticleRecommendationService>();
+        services.AddScoped<IHashtagRepository, HashtagRepository>();
+        services.AddScoped<ISocialRepository, SocialRepository>();
+        services.AddScoped<IPostInteractionRepository, PostInteractionRepository>();
+        services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<INotificationDeliveryRepository, NotificationDeliveryRepository>();
+        services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IMentionRepository, MentionRepository>();
+        services.AddScoped<IMentionService, MentionService>();
+        services.AddScoped<IChatConversationRepository, ChatConversationRepository>();
+        services.AddScoped<IStickerService, StickerService>();
+        services.AddScoped<IAdminStickerService, AdminStickerService>();
+        services.AddScoped<ICallRepository, CallRepository>();
+        services.AddScoped<ICallHistoryMessageRepository, CallHistoryMessageRepository>();
+        services.AddScoped<IGroupChatService, GroupChatService>();
+        services.AddScoped<IJoinGroupRepository, JoinGroupRepository>();
+        services.AddScoped<IShareLinkService, ShareLinkService>();
+        services.AddScoped<IAdminRepository, AdminRepository>();
+        services.AddScoped<ILegalDocumentRepository, LegalDocumentRepository>();
+        services.Configure<FirebaseOptions>(configuration.GetSection("Firebase"));
+        services.AddScoped<IDeviceTokenRepository, DeviceTokenRepository>();
+        services.AddSingleton<ConnectionRegistry>();
+        services.AddSingleton<IConnectionRegistry>(provider => provider.GetRequiredService<ConnectionRegistry>());
+        services.AddSingleton<IOnlineUserRegistry>(provider => provider.GetRequiredService<ConnectionRegistry>());
+        services.AddSingleton<IUserIdProvider, UserIdProvider>();
+        services.AddSingleton<IFirebaseInitializer, FirebaseInitializer>();
+        services.AddSingleton<IFirebaseMessagingClientFactory, FirebaseMessagingClientFactory>();
+        services.AddScoped<IRealtimeService, SignalRRealtimeService>();
+        services.AddScoped<IPushNotificationSender, FirebasePushNotificationSender>();
+        services.AddHostedService<CallTimeoutHostedService>();
+        services.AddScoped<IUnitOfWork, EfUnitOfWork>();
+        services.AddSingleton<IClientCredentialService, ClientCredentialService>();
+        services.AddScoped<IMiniAppService, MiniAppService>();
+        services.AddScoped<MiniAppManagementService>();
+        services.AddScoped<IMiniAppManagementService>(provider => provider.GetRequiredService<MiniAppManagementService>());
+        services.AddScoped<IDeveloperMiniAppService>(provider => provider.GetRequiredService<MiniAppManagementService>());
+        return services;
+    }
+}

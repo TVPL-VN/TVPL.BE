@@ -1,0 +1,626 @@
+using MediatR;
+using System.Text.Json;
+using FluentValidation;
+using Viora.Application.Realtime;
+using Viora.Application.Posts;
+using Viora.Domain.Entities;
+using Viora.Application.Mentions;
+
+namespace Viora.Application.Chat;
+
+public sealed record GetChatConversationsQuery(
+    Guid UserId,
+    int Page,
+    int PageSize,
+    string? Keyword) : IRequest<ChatConversationListResponse>;
+
+public sealed record GetChatUnreadSummaryQuery(Guid UserId) : IRequest<ChatUnreadSummaryResponse>;
+
+public sealed record CreatePrivateConversationCommand(Guid CurrentUserId, Guid UserId)
+    : IRequest<ChatResult<CreatePrivateConversationResponse>>;
+
+public sealed record CreatePrivateConversationRequest(Guid UserId);
+public sealed record CreatePrivateConversationResponse(Guid ConversationId, bool IsCreated);
+
+public sealed record GetChatConversationMessagesQuery(
+    Guid UserId,
+    Guid ConversationId,
+    int Page,
+    int PageSize,
+    Guid? AfterMessageId = null,
+    Guid? BeforeMessageId = null) : IRequest<ChatResult<ChatMessageListResponse>>;
+
+public sealed record SendChatMessageCommand(
+    Guid SenderUserId,
+    Guid ConversationId,
+    Guid? ReplyMessageId,
+    MessageType MessageType,
+    string? Content,
+    IReadOnlyList<SendChatMessageAttachmentRequest>? Attachments,
+    IReadOnlyList<Guid>? MentionUserIds = null,
+    Guid? StickerId = null)
+    : IRequest<ChatResult<SendChatMessageResponse>>;
+
+public sealed record MarkConversationReadCommand(
+    Guid UserId,
+    Guid ConversationId) : IRequest<ChatResult<MarkConversationReadResponse>>;
+
+public sealed record UploadChatAttachmentsCommand(
+    Guid UserId,
+    IReadOnlyList<CreatePostFile> Files) : IRequest<ChatResult<IReadOnlyList<ChatAttachmentUploadResponse>>>;
+
+public sealed record RecallChatMessageCommand(
+    Guid UserId,
+    Guid MessageId) : IRequest<ChatResult<RecallChatMessageResponse>>;
+
+public sealed record ForwardChatMessageCommand(
+    Guid UserId,
+    Guid MessageId,
+    IReadOnlyList<Guid> ConversationIds) : IRequest<ChatResult<ForwardChatMessageResponse>>;
+
+public sealed record ForwardChatMessageResponse(bool Success);
+
+public sealed record SetConversationPinCommand(
+    Guid UserId,
+    Guid ConversationId,
+    bool IsPinned) : IRequest<ChatResult<SetConversationPinResponse>>;
+
+public sealed record SetConversationMuteCommand(Guid UserId, Guid ConversationId, bool IsMuted)
+    : IRequest<ChatResult<SetConversationMuteResponse>>;
+
+public sealed record SetConversationBlockCommand(Guid UserId, Guid ConversationId, bool IsBlocked)
+    : IRequest<ChatResult<SetConversationBlockResponse>>;
+
+public sealed record GetConversationInfoQuery(Guid UserId, Guid ConversationId)
+    : IRequest<ChatResult<ChatConversationInfoResponse>>;
+
+public sealed record GetConversationAttachmentsQuery(
+    Guid UserId,
+    Guid ConversationId,
+    ChatAttachmentFilterType Type,
+    int Page,
+    int PageSize) : IRequest<ChatResult<ChatAttachmentListResponse>>;
+
+public sealed record GetConversationLinksQuery(Guid UserId, Guid ConversationId, int Page, int PageSize)
+    : IRequest<ChatResult<ChatLinkListResponse>>;
+
+public sealed record SearchConversationMessagesQuery(
+    Guid UserId,
+    Guid ConversationId,
+    string? Keyword,
+    int Page,
+    int PageSize) : IRequest<ChatResult<ChatMessageSearchResponse>>;
+
+public sealed record SendChatMessageAttachmentRequest(
+    string FileUrl,
+    string? FileName,
+    string? MimeType,
+    string? ThumbnailUrl,
+    long? FileSize,
+    int? Duration);
+
+public sealed record ChatAttachmentUploadResponse(
+    string FileUrl,
+    string FileName,
+    string? MimeType,
+    string? ThumbnailUrl,
+    int? Duration,
+    long FileSize);
+
+public enum ChatError
+{
+    ConversationNotFound,
+    ConversationDissolved,
+    MessageNotFound,
+    UserNotFound,
+    Forbidden,
+    Validation
+}
+
+public sealed record ChatResult<T>(bool IsSuccess, T? Value, ChatError? Error, string? Message)
+{
+    public static ChatResult<T> Success(T value) => new(true, value, null, null);
+    public static ChatResult<T> Failure(ChatError error, string message) => new(false, default, error, message);
+}
+
+public sealed record ChatConversationListResponse(
+    int Page,
+    int PageSize,
+    int TotalItems,
+    int TotalPages,
+    IReadOnlyList<ChatConversationItemResponse> Items);
+
+public sealed record ChatUnreadSummaryResponse(int TotalUnreadCount);
+
+public sealed record ChatConversationItemResponse(
+    Guid Id,
+    ConversationType ConversationType,
+    string? Name,
+    string? AvatarUrl,
+    ChatConversationParticipantResponse? OtherParticipant,
+    int MemberCount,
+    ChatLastMessageResponse? LastMessage,
+    int UnreadCount,
+    bool IsMuted,
+    bool IsPinned,
+    DateTime? LastMessageAt,
+    DateTime UpdatedAt);
+
+public sealed record ChatLastMessageResponse(
+    Guid Id,
+    Guid SenderId,
+    string SenderName,
+    MessageType MessageType,
+    string? Content,
+    IReadOnlyList<ChatMessageAttachmentResponse> Attachments,
+    DateTime CreatedAt,
+    bool IsMine);
+
+public sealed record ChatMessageListResponse(
+    int Page,
+    int PageSize,
+    int TotalItems,
+    int TotalPages,
+    ChatMessageConversationResponse Conversation,
+    IReadOnlyList<ChatMessageItemResponse> Items);
+
+public sealed record ChatMessageConversationResponse(
+    Guid Id,
+    ConversationType Type,
+    bool IsBlocked,
+    ChatParticipantResponse? BlockedBy,
+    bool OnlyAdminCanSend,
+    bool CanSendMessage);
+
+public sealed record ChatMessageItemResponse(
+    Guid Id,
+    ChatMessageSenderResponse Sender,
+    MessageType MessageType,
+    string? Content,
+    ChatReplyMessageResponse? ReplyMessage,
+    IReadOnlyList<ChatMessageAttachmentResponse> Attachments,
+    IReadOnlyList<ChatMessageReactionResponse> Reactions,
+    ChatReactionSummaryResponse ReactionSummary,
+    bool IsMine,
+    bool IsEdited,
+    bool IsDeleted,
+    DateTime CreatedAt,
+    DateTime UpdatedAt)
+{
+    public IReadOnlyList<MentionResponse> Mentions { get; init; } = [];
+    public ChatStickerResponse? Sticker { get; init; }
+}
+
+public sealed record SendChatMessageResponse(
+    Guid Id,
+    Guid ConversationId,
+    ChatMessageSenderResponse Sender,
+    MessageType MessageType,
+    string? Content,
+    ChatReplyMessageResponse? ReplyMessage,
+    IReadOnlyList<ChatMessageAttachmentResponse> Attachments,
+    bool IsMine,
+    bool IsEdited,
+    bool IsDeleted,
+    DateTime CreatedAt)
+{
+    public IReadOnlyList<MentionResponse> Mentions { get; init; } = [];
+    public ChatStickerResponse? Sticker { get; init; }
+}
+
+public sealed record ChatRealtimeMessageResponse(
+    Guid Id,
+    Guid ConversationId,
+    ChatMessageSenderResponse Sender,
+    MessageType MessageType,
+    string? Content,
+    ChatReplyMessageResponse? Reply,
+    IReadOnlyList<ChatMessageAttachmentResponse> Attachments,
+    IReadOnlyList<ChatMessageReactionResponse> Reactions,
+    bool IsMine,
+    bool IsEdited,
+    bool IsDeleted,
+    DateTime CreatedAt)
+{
+    public IReadOnlyList<MentionResponse> Mentions { get; init; } = [];
+    public ChatStickerResponse? Sticker { get; init; }
+}
+
+public sealed record ChatStickerResponse(
+    Guid Id,
+    Guid StickerPackId,
+    string Name,
+    string ImageUrl,
+    string? ThumbnailUrl,
+    StickerFormat Format);
+
+public sealed record NewMessageNotificationPayload(
+    Guid ConversationId,
+    ConversationType ConversationType,
+    string? ConversationName,
+    string? ConversationAvatarUrl,
+    ChatMessageSenderResponse Sender,
+    NewMessageNotificationMessagePayload Message,
+    int UnreadCount,
+    bool IsMuted);
+
+public sealed record NewMessageNotificationMessagePayload(
+    Guid Id,
+    string? Content,
+    MessageType MessageType,
+    IReadOnlyList<ChatMessageAttachmentResponse> Attachments,
+    DateTime CreatedAt);
+
+public sealed record MessageDeliveredPayload(
+    Guid ConversationId,
+    Guid MessageId,
+    Guid UserId,
+    DateTime DeliveredAt);
+
+public sealed record MessageDeletedPayload(
+    Guid ConversationId,
+    Guid MessageId,
+    Guid DeletedBy,
+    DateTime DeletedAt);
+
+public sealed record RecallChatMessageResponse(
+    Guid ConversationId,
+    Guid MessageId,
+    Guid DeletedBy,
+    DateTime DeletedAt);
+
+public sealed record SetConversationPinResponse(
+    Guid ConversationId,
+    bool IsPinned);
+
+public sealed record ConversationPinnedChangedPayload(
+    Guid ConversationId,
+    bool IsPinned);
+
+public sealed record SetConversationMuteResponse(Guid ConversationId, bool IsMuted);
+public sealed record ConversationMutedChangedPayload(Guid ConversationId, bool IsMuted);
+public sealed record SetConversationBlockResponse(Guid ConversationId, bool IsBlocked);
+public sealed record ConversationBlockedChangedPayload(Guid ConversationId, bool IsBlocked);
+
+public sealed record ChatConversationInfoResponse(
+    Guid Id,
+    ConversationType ConversationType,
+    string? Name,
+    string? AvatarUrl,
+    int MemberCount,
+    bool IsPinned,
+    bool IsMuted,
+    bool IsBlocked,
+    ConversationSendPermission? CanSendMessage,
+    Guid? CreatedBy,
+    ChatConversationOtherUserResponse? OtherUser);
+
+public sealed record ChatConversationOtherUserResponse(
+    Guid Id,
+    string DisplayName,
+    string? AvatarUrl,
+    bool IsVerified,
+    AccountStyle AccountStyle = AccountStyle.Personal);
+
+public enum ChatAttachmentFilterType : short { All = 0, Image = 1, Video = 2, File = 3, Audio = 4 }
+
+public sealed record ChatAttachmentListResponse(
+    int Page,
+    int PageSize,
+    int TotalItems,
+    int TotalPages,
+    IReadOnlyList<ChatAttachmentListItemResponse> Items);
+
+public sealed record ChatAttachmentListItemResponse(
+    Guid MessageId,
+    Guid AttachmentId,
+    string FileUrl,
+    string? FileName,
+    string? MimeType,
+    long? FileSize,
+    int? Duration,
+    DateTime CreatedAt);
+
+public sealed record ChatLinkListResponse(
+    int Page,
+    int PageSize,
+    int TotalItems,
+    int TotalPages,
+    IReadOnlyList<ChatLinkItemResponse> Items);
+
+public sealed record ChatLinkItemResponse(
+    Guid MessageId,
+    string Url,
+    ChatLinkSenderResponse Sender,
+    DateTime CreatedAt);
+
+public sealed record ChatLinkSenderResponse(Guid Id, string DisplayName);
+
+public sealed record ChatMessageSearchResponse(
+    int Page,
+    int PageSize,
+    int TotalItems,
+    int TotalPages,
+    IReadOnlyList<ChatMessageSearchItemResponse> Items);
+
+public sealed record ChatMessageSearchItemResponse(
+    Guid MessageId,
+    string? Content,
+    ChatLinkSenderResponse Sender,
+    DateTime CreatedAt);
+
+public sealed record MarkConversationReadResponse(
+    Guid ConversationId,
+    Guid? LastReadMessageId,
+    DateTime ReadAt);
+
+public sealed record MessagesReadRealtimePayload(
+    Guid ConversationId,
+    Guid UserId,
+    Guid? LastReadMessageId,
+    DateTime ReadAt,
+    int UnreadCount);
+
+public sealed record ChatMessageSenderResponse(
+    Guid Id,
+    string DisplayName,
+    string? AvatarUrl,
+    bool IsVerified);
+
+public sealed record ChatParticipantResponse(
+    Guid Id,
+    string DisplayName,
+    string? AvatarUrl);
+
+public sealed record ChatConversationParticipantResponse(
+    Guid Id,
+    string DisplayName,
+    string? AvatarUrl,
+    bool IsVerified,
+    bool IsStranger,
+    ChatFriendshipResponse Friendship);
+
+public sealed record ChatFriendshipResponse(string? Status, bool IsRequester);
+
+public sealed record ChatReplyMessageResponse(
+    Guid Id,
+    string? Content,
+    MessageType MessageType,
+    string SenderName);
+
+public sealed record ChatMessageAttachmentResponse(
+    Guid Id,
+    string FileUrl,
+    string? FileName,
+    string? MimeType,
+    string? ThumbnailUrl,
+    long? FileSize,
+    int? Duration);
+
+public sealed record ChatMessageReactionResponse(
+    Guid UserId,
+    string DisplayName,
+    ReactionType ReactionType);
+
+public sealed record ChatReactionSummaryResponse(
+    int Like,
+    int Love,
+    int Haha,
+    int Wow,
+    int Sad,
+    int Angry,
+    int Total);
+
+public interface IChatConversationRepository
+{
+    Task<ChatResult<CreatePrivateConversationResponse>> CreatePrivateConversationAsync(
+        CreatePrivateConversationCommand command,
+        CancellationToken cancellationToken);
+
+    Task<ChatConversationListResponse> GetConversationsAsync(
+        GetChatConversationsQuery query,
+        CancellationToken cancellationToken);
+
+    Task<ChatUnreadSummaryResponse> GetUnreadSummaryAsync(
+        GetChatUnreadSummaryQuery query,
+        CancellationToken cancellationToken);
+
+    Task<ChatResult<ChatMessageListResponse>> GetMessagesAsync(
+        GetChatConversationMessagesQuery query,
+        CancellationToken cancellationToken);
+
+    Task<ChatResult<SendChatMessageRepositoryResult>> SendMessageAsync(
+        SendChatMessageCommand command,
+        CancellationToken cancellationToken);
+
+    Task<ChatResult<MarkConversationReadRepositoryResult>> MarkReadAsync(
+        MarkConversationReadCommand command,
+        CancellationToken cancellationToken);
+
+    Task<ChatConversationItemResponse?> GetConversationItemAsync(
+        Guid userId,
+        Guid conversationId,
+        CancellationToken cancellationToken);
+
+    Task<ChatResult<RecallChatMessageRepositoryResult>> RecallMessageAsync(
+        RecallChatMessageCommand command,
+        CancellationToken cancellationToken);
+
+    Task<ChatResult<ForwardChatMessageRepositoryResult>> ForwardMessageAsync(
+        ForwardChatMessageCommand command,
+        CancellationToken cancellationToken);
+
+    Task<ChatResult<SetConversationPinResponse>> SetPinAsync(
+        SetConversationPinCommand command,
+        CancellationToken cancellationToken);
+
+    Task<ChatResult<SetConversationMuteResponse>> SetMuteAsync(SetConversationMuteCommand command, CancellationToken cancellationToken);
+    Task<ChatResult<SetConversationBlockResponse>> SetBlockAsync(SetConversationBlockCommand command, CancellationToken cancellationToken);
+    Task<ChatResult<ChatConversationInfoResponse>> GetInfoAsync(GetConversationInfoQuery query, CancellationToken cancellationToken);
+    Task<ChatResult<ChatAttachmentListResponse>> GetAttachmentsAsync(GetConversationAttachmentsQuery query, CancellationToken cancellationToken);
+    Task<ChatResult<ChatLinkListResponse>> GetLinksAsync(GetConversationLinksQuery query, CancellationToken cancellationToken);
+    Task<ChatResult<ChatMessageSearchResponse>> SearchMessagesAsync(SearchConversationMessagesQuery query, CancellationToken cancellationToken);
+}
+
+public sealed record SendChatMessageRepositoryResult(
+    SendChatMessageResponse Message,
+    IReadOnlyList<ChatConversationRecipientState> Recipients);
+
+public sealed record MarkConversationReadRepositoryResult(
+    MarkConversationReadResponse Response,
+    IReadOnlyList<Guid> ConversationMemberIds,
+    bool DidUpdate);
+
+public sealed record ChatConversationRecipientState(
+    Guid UserId,
+    bool IsMuted,
+    int UnreadCount);
+
+public sealed record RecallChatMessageRepositoryResult(
+    RecallChatMessageResponse Response,
+    IReadOnlyList<Guid> ConversationMemberIds);
+
+public sealed record ForwardChatMessageRepositoryResult(
+    IReadOnlyList<SendChatMessageRepositoryResult> Messages);
+
+public sealed class CreatePrivateConversationValidator : AbstractValidator<CreatePrivateConversationCommand>
+{
+    public CreatePrivateConversationValidator()
+    {
+        RuleFor(command => command.CurrentUserId).NotEmpty();
+        RuleFor(command => command.UserId).NotEmpty();
+        RuleFor(command => command.UserId)
+            .NotEqual(command => command.CurrentUserId)
+            .WithMessage("Khong the tao phong chat voi chinh minh.");
+    }
+}
+
+public sealed class ForwardChatMessageValidator : AbstractValidator<ForwardChatMessageCommand>
+{
+    public ForwardChatMessageValidator()
+    {
+        RuleFor(command => command.UserId).NotEmpty();
+        RuleFor(command => command.MessageId).NotEmpty();
+        RuleFor(command => command.ConversationIds)
+            .Cascade(CascadeMode.Stop)
+            .NotEmpty()
+            .Must(ids => ids.Count <= 20)
+            .WithMessage("Chỉ có thể chuyển tiếp đến tối đa 20 cuộc trò chuyện.")
+            .Must(ids => ids.All(id => id != Guid.Empty) && ids.Distinct().Count() == ids.Count)
+            .WithMessage("Danh sách cuộc trò chuyện không hợp lệ.");
+    }
+}
+
+public sealed class SendChatMessageValidator : AbstractValidator<SendChatMessageCommand>
+{
+    public SendChatMessageValidator()
+    {
+        RuleFor(command => command.SenderUserId).NotEmpty();
+        RuleFor(command => command.ConversationId).NotEmpty();
+        RuleFor(command => command.MessageType)
+            .Must(type => type is not (MessageType.Recall or MessageType.System) && Enum.IsDefined(type))
+            .WithMessage("Loai tin nhan khong hop le.");
+        RuleFor(command => command.Attachments)
+            .Must(attachments => attachments is null || attachments.Count <= 10)
+            .WithMessage("Toi da 10 tep dinh kem.");
+        RuleForEach(command => command.Attachments).ChildRules(attachment =>
+        {
+            attachment.RuleFor(value => value.FileUrl)
+                .NotEmpty()
+                .MaximumLength(2048)
+                .Must(value => Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)
+                .WithMessage("FileUrl phai la URL public HTTPS.");
+            attachment.RuleFor(value => value.FileName).MaximumLength(255);
+            attachment.RuleFor(value => value.MimeType).MaximumLength(100);
+            attachment.RuleFor(value => value.ThumbnailUrl).MaximumLength(2048);
+            attachment.RuleFor(value => value.FileSize).GreaterThanOrEqualTo(0).When(value => value.FileSize.HasValue);
+            attachment.RuleFor(value => value.Duration).GreaterThanOrEqualTo(0).When(value => value.Duration.HasValue);
+        });
+        RuleFor(command => command).Custom((command, context) =>
+        {
+            var attachments = command.Attachments ?? [];
+            var content = command.Content?.Trim();
+
+            if (command.MessageType != MessageType.Sticker && command.StickerId.HasValue)
+            {
+                context.AddFailure(nameof(command.StickerId), "StickerId chi dung cho tin nhan sticker.");
+            }
+
+            switch (command.MessageType)
+            {
+                case MessageType.Text:
+                    if (string.IsNullOrWhiteSpace(content))
+                    {
+                        context.AddFailure(nameof(command.Content), "Noi dung tin nhan la bat buoc.");
+                    }
+                    if (attachments.Count > 0)
+                    {
+                        context.AddFailure(nameof(command.Attachments), "Tin nhan text khong duoc co tep dinh kem.");
+                    }
+                    break;
+                case MessageType.Image:
+                case MessageType.Video:
+                case MessageType.File:
+                    if (attachments.Count == 0)
+                    {
+                        context.AddFailure(nameof(command.Attachments), "Tin nhan can it nhat mot tep dinh kem.");
+                    }
+                    break;
+                case MessageType.Audio:
+                    if (attachments.Count == 0)
+                    {
+                        context.AddFailure(nameof(command.Attachments), "Tin nhan audio can it nhat mot tep dinh kem.");
+                    }
+                    if (attachments.Any(attachment => !attachment.Duration.HasValue))
+                    {
+                        context.AddFailure(nameof(command.Attachments), "Tin nhan audio can duration.");
+                    }
+                    break;
+                case MessageType.Sticker:
+                    if (!command.StickerId.HasValue || command.StickerId == Guid.Empty)
+                    {
+                        context.AddFailure(nameof(command.StickerId), "StickerId la bat buoc.");
+                    }
+                    if (!string.IsNullOrWhiteSpace(content))
+                    {
+                        context.AddFailure(nameof(command.Content), "Tin nhan sticker khong duoc co noi dung.");
+                    }
+                    if (attachments.Count > 0)
+                    {
+                        context.AddFailure(nameof(command.Attachments), "Tin nhan sticker khong duoc co tep dinh kem.");
+                    }
+                    break;
+                case MessageType.Location:
+                    if (!IsValidLocationJson(content))
+                    {
+                        context.AddFailure(nameof(command.Content), "Noi dung location phai la JSON hop le.");
+                    }
+                    if (attachments.Count > 0)
+                    {
+                        context.AddFailure(nameof(command.Attachments), "Tin nhan location khong duoc co tep dinh kem.");
+                    }
+                    break;
+            }
+        });
+    }
+
+    private static bool IsValidLocationJson(string? content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return false;
+
+        try
+        {
+            using var document = JsonDocument.Parse(content);
+            var root = document.RootElement;
+            return root.ValueKind == JsonValueKind.Object &&
+                   root.TryGetProperty("latitude", out var latitude) &&
+                   root.TryGetProperty("longitude", out var longitude) &&
+                   latitude.TryGetDouble(out _) &&
+                   longitude.TryGetDouble(out _);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+}

@@ -1,0 +1,149 @@
+using MediatR;
+using Viora.Domain.Entities;
+using Viora.Application.Mentions;
+
+namespace Viora.Application.Posts;
+
+public sealed record GetCommunityPostsQuery(
+    int Page,
+    int PageSize,
+    string? Keyword,
+    Guid? UserId,
+    Guid? ViewerUserId,
+    PostType? PostType = null,
+    PostFeedSort? Sort = null) : IRequest<PostFeedResponse>;
+
+public enum PostFeedSort
+{
+    Trending = 0,
+    Latest = 1,
+    Recommended = 2
+}
+
+public sealed record GetPostDetailQuery(Guid UserId, Guid PostId)
+    : IRequest<Result<PostDetailResponse>>;
+
+public sealed record PostFeedResponse(
+    int Page,
+    int PageSize,
+    int TotalItems,
+    int TotalPages,
+    IReadOnlyList<PostFeedItemResponse> Items);
+
+public sealed record PostFeedItemResponse(
+    Guid Id,
+    string? Content,
+    PostType PostType,
+    PostVisibility Visibility,
+    string? Location,
+    string? Link,
+    DateTime CreatedAt,
+    PostFeedUserResponse User,
+    IReadOnlyList<PostFeedMediaResponse> Media,
+    int ReactionCount,
+    int CommentCount,
+    int ShareCount,
+    int SaveCount,
+    int ViewCount,
+    bool IsMine,
+    bool IsReacted,
+    ReactionType? ReactionType,
+    bool IsSaved,
+    IReadOnlyList<PostDetailHashtagResponse> Hashtags,
+    PostFeedOriginalPostResponse? OriginalPost)
+{
+    public IReadOnlyList<MentionResponse> Mentions { get; init; } = [];
+    public ArticleFeedSummaryResponse? Article { get; init; }
+}
+
+public sealed record ArticleFeedSummaryResponse(
+    string Title,
+    string? ThumbnailUrl,
+    string? Preview,
+    int ReadingTimeMinutes);
+
+public sealed record PostFeedOriginalPostResponse(
+    Guid Id,
+    string? Content,
+    PostType PostType,
+    PostVisibility Visibility,
+    string? Location,
+    string? Link,
+    DateTime CreatedAt,
+    PostFeedUserResponse User,
+    IReadOnlyList<PostFeedMediaResponse> Media,
+    int ReactionCount,
+    int CommentCount,
+    int ShareCount,
+    int SaveCount,
+    int ViewCount)
+{
+    public IReadOnlyList<MentionResponse> Mentions { get; init; } = [];
+}
+
+public sealed record PostFeedUserResponse(
+    Guid Id,
+    string DisplayName,
+    string? AvatarUrl,
+    bool IsVerified,
+    AccountStyle AccountStyle = AccountStyle.Personal);
+
+public sealed record PostFeedMediaResponse(
+    Guid Id,
+    string MediaUrl,
+    string? ThumbnailUrl);
+
+public enum PostDetailMediaType : short
+{
+    Image = 0,
+    Video = 1
+}
+
+public sealed record PostDetailResponse(
+    Guid Id,
+    PostType PostType,
+    string? Content,
+    PostVisibility Visibility,
+    string? Location,
+    DateTime CreatedAt,
+    DateTime UpdatedAt,
+    int ReactionCount,
+    int CommentCount,
+    int ShareCount,
+    int SaveCount,
+    int ViewCount,
+    ReactionType? MyReaction,
+    bool IsSaved,
+    bool IsOwner,
+    PostDetailUserResponse User,
+    IReadOnlyList<PostDetailMediaResponse> Media,
+    IReadOnlyList<PostDetailHashtagResponse> Hashtags)
+{
+    public IReadOnlyList<MentionResponse> Mentions { get; init; } = [];
+}
+
+public sealed record PostDetailUserResponse(
+    Guid Id,
+    string DisplayName,
+    string? AvatarUrl,
+    bool IsVerified,
+    AccountStyle AccountStyle = AccountStyle.Personal);
+
+public sealed record PostDetailMediaResponse(
+    Guid Id,
+    PostDetailMediaType MediaType,
+    string MediaUrl,
+    string? ThumbnailUrl);
+
+public sealed record PostDetailHashtagResponse(Guid Id, string Name);
+
+public interface IPostFeedRepository
+{
+    Task<PostFeedResponse> GetCommunityPostsAsync(
+        GetCommunityPostsQuery query,
+        CancellationToken cancellationToken);
+
+    Task<Result<PostDetailResponse>> GetPostDetailAsync(
+        GetPostDetailQuery query,
+        CancellationToken cancellationToken);
+}
