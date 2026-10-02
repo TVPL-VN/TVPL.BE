@@ -7,7 +7,7 @@ namespace viora_BE.Controllers;
 
 [ApiController]
 [Route("api/admin/legal")]
-[Authorize(Roles = "2")]
+[Authorize(Policy = "ActiveAdmin")]
 public sealed class AdminLegalController(ILegalDocumentRepository repository) : ControllerBase
 {
     [HttpGet]

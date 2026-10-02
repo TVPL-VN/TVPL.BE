@@ -6,7 +6,7 @@ namespace viora_BE.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/sticker-packs")]
-[Authorize(Roles = "2")]
+[Authorize(Policy = "ActiveAdmin")]
 public sealed class AdminStickerPacksController(IAdminStickerService stickers) : ControllerBase
 {
     [HttpGet]

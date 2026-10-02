@@ -9,6 +9,9 @@ using viora_BE.OpenApi;
 using System.Threading.RateLimiting;
 using Viora.Application.Posts;
 using Viora.Infrastructure.Realtime;
+using Microsoft.EntityFrameworkCore;
+using Viora.Infrastructure.Persistence;
+using Viora.Domain.Entities;
 
 LoadDotEnv();
 Environment.SetEnvironmentVariable("DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE", "false");
@@ -72,6 +75,9 @@ static void LoadDotEnv()
 // Add services to the container.
 
 builder.Services.AddControllers();
+builder.Services.AddAuthorization(options => options.AddPolicy("ActiveAdmin", policy =>
+    policy.RequireAuthenticatedUser().AddRequirements(new viora_BE.Security.ActiveAdminRequirement())));
+builder.Services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, viora_BE.Security.ActiveAdminAuthorization>();
 builder.Services.AddMediatR(configuration =>
     configuration.RegisterServicesFromAssembly(typeof(GetCommunityPostsQuery).Assembly));
 var jwtKey = builder.Configuration["Jwt:Key"] ?? string.Empty;
@@ -100,13 +106,24 @@ builder.Services
         };
         options.Events = new JwtBearerEvents
         {
-            OnTokenValidated = context =>
+            OnTokenValidated = async context =>
             {
                 if (context.Principal?.FindFirst("token_type")?.Value != "access")
                 {
                     context.Fail("Invalid token type.");
                 }
-                return Task.CompletedTask;
+                if (!Guid.TryParse(context.Principal?.FindFirst("sub")?.Value, out var accountId))
+                {
+                    context.Fail("Invalid account.");
+                    return;
+                }
+                var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+                var account = await db.Accounts.AsNoTracking().Where(x => x.Id == accountId)
+                    .Select(x => new { x.Status, x.DeletedAt, x.SessionVersion }).SingleOrDefaultAsync(context.HttpContext.RequestAborted);
+                var claim = context.Principal?.FindFirst("session_version")?.Value;
+                var version = claim is null ? 0 : int.TryParse(claim, out var parsed) ? parsed : -1;
+                if (account is null || account.Status != AccountStatus.Active || account.DeletedAt is not null || version != account.SessionVersion)
+                    context.Fail("Account inactive or session revoked.");
             },
             OnMessageReceived = context =>
             {

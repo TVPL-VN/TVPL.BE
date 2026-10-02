@@ -22,6 +22,7 @@ public sealed class AccountsController(
     private const string RefreshTokenCookiePath = "/api/accounts";
     private const string RefreshTokenTransportHeader = "X-ANKT-Refresh-Token";
 
+    [Authorize(Policy = "ActiveAdmin")]
     [HttpGet]
     [ProducesResponseType<PagedAccountResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedAccountResponse>> List(
@@ -30,6 +31,7 @@ public sealed class AccountsController(
         CancellationToken cancellationToken = default) =>
         Ok(await accountService.ListAsync(page, pageSize, cancellationToken));
 
+    [Authorize(Policy = "ActiveAdmin")]
     [HttpGet("{id:guid}")]
     [ProducesResponseType<AccountResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
@@ -230,6 +232,7 @@ public sealed class AccountsController(
         };
     }
 
+    [Authorize(Policy = "ActiveAdmin")]
     [HttpPut("{id:guid}")]
     [ProducesResponseType<AccountResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
@@ -255,6 +258,7 @@ public sealed class AccountsController(
         }
     }
 
+    [Authorize(Policy = "ActiveAdmin")]
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)

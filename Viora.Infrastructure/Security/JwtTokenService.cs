@@ -77,7 +77,8 @@ public sealed class JwtTokenService : ITokenService
             ["nbf"] = issuedAt.ToUnixTimeSeconds(),
             ["exp"] = expiresAt.ToUnixTimeSeconds(),
             ["role"] = (short)account.Role,
-            ["token_type"] = tokenType
+            ["token_type"] = tokenType,
+            ["session_version"] = account.SessionVersion
         };
 
         if (account.User is not null)

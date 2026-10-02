@@ -14,6 +14,11 @@ public sealed class ProfessionalVerification : AuditableEntity
     public int CompletedStep { get; set; }
     public int Revision { get; set; }
     public DateTime? SubmittedAt { get; set; }
+    public Guid? ReviewerUserId { get; set; }
+    public User? Reviewer { get; set; }
+    public DateTime? ReviewedAt { get; set; }
+    public string? ReviewNote { get; set; }
+    public string? RejectionReason { get; set; }
     public ICollection<VerificationDocument> Documents { get; set; } = [];
 }
 

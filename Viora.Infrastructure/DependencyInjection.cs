@@ -195,6 +195,7 @@ public static class DependencyInjection
         services.AddScoped<IJoinGroupRepository, JoinGroupRepository>();
         services.AddScoped<IShareLinkService, ShareLinkService>();
         services.AddScoped<IAdminRepository, AdminRepository>();
+        services.AddScoped<IAdminWorkspaceService, AdminWorkspaceService>();
         services.AddScoped<ILegalDocumentRepository, LegalDocumentRepository>();
         services.Configure<FirebaseOptions>(configuration.GetSection("Firebase"));
         services.AddScoped<IDeviceTokenRepository, DeviceTokenRepository>();

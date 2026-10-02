@@ -66,7 +66,10 @@ public sealed record AdminUserSummaryResponse(
     AccountStyle AccountStyle,
     int PostCount,
     int FriendCount,
-    DateTime CreatedAt);
+    DateTime CreatedAt)
+{
+    public VerificationStatus? ProfessionalVerificationStatus { get; init; }
+}
 
 public sealed record AdminUserDetailResponse(
     Guid Id,
@@ -129,7 +132,10 @@ public sealed record AdminPostSummaryResponse(
     int CommentCount,
     int ShareCount,
     int ReportCount,
-    DateTime CreatedAt);
+    DateTime CreatedAt)
+{
+    public string? ThumbnailUrl { get; init; }
+}
 
 public sealed record AdminPostDetailResponse(
     Guid Id,
@@ -149,7 +155,12 @@ public sealed record AdminPostDetailResponse(
     int ReportCount,
     DateTime CreatedAt,
     IReadOnlyList<AdminPostMediaResponse> Media,
-    IReadOnlyList<string> Hashtags);
+    IReadOnlyList<string> Hashtags)
+{
+    public DateTime UpdatedAt { get; init; }
+    public IReadOnlyList<AdminArticleBlockResponse> Blocks { get; init; } = [];
+}
+public sealed record AdminArticleBlockResponse(Guid Id, int OrderIndex, ArticleBlockType Type, string? Content, string? MediaUrl, string? ThumbnailUrl, string? Caption);
 
 public sealed record AdminPostMediaResponse(Guid Id, string MediaUrl, string? ThumbnailUrl);
 
@@ -197,12 +208,16 @@ public sealed record AdminConversationDetailResponse(
 public sealed record AdminConversationMemberResponse(Guid UserId, string DisplayName, string? AvatarUrl, ConversationMemberRole Role, ConversationMemberStatus? Status, DateTime JoinedAt);
 public sealed record AdminMessageResponse(Guid Id, Guid SenderUserId, string SenderDisplayName, MessageType MessageType, string? Content, bool IsDeleted, DateTime CreatedAt);
 
-public sealed record AdminLogSummaryResponse(Guid Id, Guid AdminId, string? AdminDisplayName, string Action, string TargetType, Guid? TargetId, string? Description, DateTime CreatedAt);
+public sealed record AdminLogSummaryResponse(Guid Id, Guid AdminId, string? AdminDisplayName, string Action, string TargetType, Guid? TargetId, string? Description, DateTime CreatedAt)
+{
+    public AdminLogSummaryResponse() : this(default, default, null, "", "", null, null, default) { }
+    public string? TargetDisplayName { get; init; }
+}
 
 public sealed record AdminMutationResponse(bool Success, string Message);
 
 public sealed record GetAdminDashboardQuery : IRequest<AdminDashboardResponse>;
-public sealed record GetAdminUsersQuery(int Page, int PageSize, string? Keyword, AccountStatus? Status, UserIdentityState? IdentityStatus, bool? IsVerified, string? SortBy, string? SortDirection) : IRequest<AdminPagedResponse<AdminUserSummaryResponse>>;
+public sealed record GetAdminUsersQuery(int Page, int PageSize, string? Keyword, AccountStatus? Status, UserIdentityState? IdentityStatus, bool? IsVerified, string? SortBy, string? SortDirection, AccountStyle? AccountStyle = null) : IRequest<AdminPagedResponse<AdminUserSummaryResponse>>;
 public sealed record GetAdminUserDetailQuery(Guid Id) : IRequest<AdminUserDetailResponse?>;
 public sealed record UpdateAdminUserStatusCommand(Guid AdminId, Guid Id, AccountStatus Status, string? Reason) : IRequest<AdminMutationResponse?>;
 public sealed record UpdateAdminUserVerifyCommand(Guid AdminId, Guid Id, bool IsVerified) : IRequest<AdminMutationResponse?>;
@@ -218,7 +233,7 @@ public sealed record GetAdminPostDetailQuery(Guid Id, PostType? PostType = null)
 public sealed record HideAdminPostCommand(Guid AdminId, Guid Id, PostType? PostType = null) : IRequest<AdminMutationResponse?>;
 public sealed record RestoreAdminPostCommand(Guid AdminId, Guid Id, PostType? PostType = null) : IRequest<AdminMutationResponse?>;
 public sealed record DeleteAdminPostCommand(Guid AdminId, Guid Id, PostType? PostType = null) : IRequest<AdminMutationResponse?>;
-public sealed record GetAdminReportsQuery(int Page, int PageSize, ReportStatus? Status, ReportTargetType? TargetType, ReportReason? Reason, string? SortBy, string? SortDirection) : IRequest<AdminPagedResponse<AdminReportSummaryResponse>>;
+public sealed record GetAdminReportsQuery(int Page, int PageSize, ReportStatus? Status, ReportTargetType? TargetType, ReportReason? Reason, string? SortBy, string? SortDirection, DateTime? From = null, DateTime? To = null) : IRequest<AdminPagedResponse<AdminReportSummaryResponse>>;
 public sealed record GetAdminReportDetailQuery(Guid Id) : IRequest<AdminReportDetailResponse?>;
 public sealed record ApproveAdminReportCommand(Guid AdminId, Guid Id, string? Action) : IRequest<AdminMutationResponse?>;
 public sealed record RejectAdminReportCommand(Guid AdminId, Guid Id) : IRequest<AdminMutationResponse?>;
@@ -228,7 +243,7 @@ public sealed record DeleteAdminHashtagCommand(Guid AdminId, Guid Id) : IRequest
 public sealed record CreateAdminAnnouncementCommand(Guid AdminId, string Title, string Content, string? ImageUrl, string SendTo) : IRequest<AdminMutationResponse>;
 public sealed record GetAdminConversationsQuery(int Page, int PageSize, string? Keyword, ConversationType? Type, string? SortBy, string? SortDirection) : IRequest<AdminPagedResponse<AdminConversationSummaryResponse>>;
 public sealed record GetAdminConversationDetailQuery(Guid Id) : IRequest<AdminConversationDetailResponse?>;
-public sealed record GetAdminLogsQuery(int Page, int PageSize, Guid? AdminId, string? Action, DateTime? From, DateTime? To, string? SortBy, string? SortDirection) : IRequest<AdminPagedResponse<AdminLogSummaryResponse>>;
+public sealed record GetAdminLogsQuery(int Page, int PageSize, Guid? AdminId, string? Action, DateTime? From, DateTime? To, string? SortBy, string? SortDirection, string? TargetType = null, Guid? TargetId = null) : IRequest<AdminPagedResponse<AdminLogSummaryResponse>>;
 
 public interface IAdminRepository
 {

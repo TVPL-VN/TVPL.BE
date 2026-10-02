@@ -9,6 +9,7 @@ public sealed class Account : AuditableEntity
     public AccountStatus Status { get; set; } = AccountStatus.Active;
     public DateTime? LastLoginAt { get; set; }
     public DateTime? DeletedAt { get; set; }
+    public int SessionVersion { get; set; }
     public User? User { get; set; }
     public ICollection<RefreshToken> RefreshTokens { get; set; } = [];
     public ICollection<ExternalLogin> ExternalLogins { get; set; } = [];

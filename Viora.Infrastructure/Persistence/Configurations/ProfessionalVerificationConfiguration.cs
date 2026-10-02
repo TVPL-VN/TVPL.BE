@@ -20,6 +20,9 @@ internal sealed class ProfessionalVerificationConfiguration : IEntityTypeConfigu
         b.HasIndex(x => new { x.AccountId, x.Type }).IsUnique().HasFilter("\"Status\" IN (0, 1)")
             .HasDatabaseName("UX_ProfessionalVerifications_Active");
         b.Property(x => x.Revision).IsConcurrencyToken();
+        b.HasOne(x => x.Reviewer).WithMany().HasForeignKey(x => x.ReviewerUserId).OnDelete(DeleteBehavior.Restrict);
+        b.Property(x => x.ReviewNote).HasMaxLength(2000);
+        b.Property(x => x.RejectionReason).HasMaxLength(2000);
         b.OwnsOne(x => x.VerificationData, data =>
         {
             data.ToJson("VerificationData");

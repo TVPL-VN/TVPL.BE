@@ -9,8 +9,8 @@ namespace viora_BE.Controllers;
 
 [ApiController]
 [Route("api/admin")]
-[Authorize(Roles = "2")]
-public sealed class AdminController(IMediator mediator) : ControllerBase
+[Authorize(Policy = "ActiveAdmin")]
+public sealed partial class AdminController(IMediator mediator, IAdminWorkspaceService workspace) : ControllerBase
 {
     [HttpGet("dashboard")]
     public async Task<ActionResult<AdminApiResponse<AdminDashboardResponse>>> Dashboard(CancellationToken cancellationToken) =>
@@ -24,21 +24,19 @@ public sealed class AdminController(IMediator mediator) : ControllerBase
         [FromQuery] AccountStatus? status = null,
         [FromQuery] UserIdentityState? identityStatus = null,
         [FromQuery] bool? isVerified = null,
+        [FromQuery] AccountStyle? accountStyle = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] string? sortDirection = null,
         CancellationToken cancellationToken = default) =>
-        OkResponse(await mediator.Send(new GetAdminUsersQuery(page, pageSize, keyword, status, identityStatus, isVerified, sortBy, sortDirection), cancellationToken));
+        OkResponse(await mediator.Send(new GetAdminUsersQuery(page, pageSize, keyword, status, identityStatus, isVerified, sortBy, sortDirection, accountStyle), cancellationToken));
 
     [HttpGet("users/{id:guid}")]
     public async Task<ActionResult<AdminApiResponse<AdminUserDetailResponse>>> UserDetail(Guid id, CancellationToken cancellationToken) =>
         ToResult(await mediator.Send(new GetAdminUserDetailQuery(id), cancellationToken));
 
     [HttpPatch("users/{id:guid}/status")]
-    public async Task<ActionResult<AdminApiResponse<AdminMutationResponse>>> UpdateUserStatus(Guid id, UpdateAdminUserStatusRequest request, CancellationToken cancellationToken)
-    {
-        if (!TryGetAdminId(out var adminId)) return UnauthorizedResponse();
-        return ToResult(await mediator.Send(new UpdateAdminUserStatusCommand(adminId, id, request.Status, request.Reason), cancellationToken));
-    }
+    public Task<IActionResult> UpdateUserStatus(Guid id, UpdateAdminUserStatusRequest request, CancellationToken cancellationToken) =>
+        AdminMutation(async () => await workspace.UserActionAsync(await AdminId(cancellationToken), id, "Status", new(request.Reason, request.ExpectedStatus), request.Status, null, cancellationToken));
 
     [HttpPatch("users/{id:guid}/verify")]
     public async Task<ActionResult<AdminApiResponse<AdminMutationResponse>>> UpdateUserVerify(Guid id, UpdateAdminUserVerifyRequest request, CancellationToken cancellationToken)
@@ -51,20 +49,8 @@ public sealed class AdminController(IMediator mediator) : ControllerBase
     [ProducesResponseType<AdminApiResponse<AdminMutationResponse>>(StatusCodes.Status200OK)]
     [ProducesResponseType<AdminApiResponse<object>>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<AdminApiResponse<object>>(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<AdminApiResponse<AdminMutationResponse>>> UpdateUserAccountStyle(
-        Guid id,
-        UpdateAdminUserAccountStyleRequest request,
-        CancellationToken cancellationToken)
-    {
-        if (!TryGetAdminId(out var adminId)) return UnauthorizedResponse();
-        if (!Enum.IsDefined(request.AccountStyle))
-        {
-            return BadRequest(new AdminApiResponse<object>(false, "Loại tài khoản không hợp lệ.", null));
-        }
-        return ToResult(await mediator.Send(
-            new UpdateAdminUserAccountStyleCommand(adminId, id, request.AccountStyle),
-            cancellationToken));
-    }
+    public Task<IActionResult> UpdateUserAccountStyle(Guid id, UpdateAdminUserAccountStyleRequest request, CancellationToken cancellationToken) =>
+        AdminMutation(async () => await workspace.UserActionAsync(await AdminId(cancellationToken), id, "AccountStyle", new(request.Reason, ExpectedAccountStyle: request.ExpectedAccountStyle), null, request.AccountStyle, cancellationToken));
 
     [HttpGet("identities")]
     public async Task<ActionResult<AdminApiResponse<AdminPagedResponse<AdminIdentitySummaryResponse>>>> Identities(
@@ -113,25 +99,16 @@ public sealed class AdminController(IMediator mediator) : ControllerBase
         ToResult(await mediator.Send(new GetAdminPostDetailQuery(id, PostType.Post), cancellationToken));
 
     [HttpPatch("posts/{id:guid}/hide")]
-    public async Task<ActionResult<AdminApiResponse<AdminMutationResponse>>> HidePost(Guid id, CancellationToken cancellationToken)
-    {
-        if (!TryGetAdminId(out var adminId)) return UnauthorizedResponse();
-        return ToResult(await mediator.Send(new HideAdminPostCommand(adminId, id, PostType.Post), cancellationToken));
-    }
+    public Task<IActionResult> HidePost(Guid id, AdminContentDecisionRequest request, CancellationToken cancellationToken) =>
+        AdminMutation(async () => await workspace.ModerateAsync(await AdminId(cancellationToken), id, PostType.Post, PostStatus.Hidden, request, cancellationToken));
 
     [HttpPatch("posts/{id:guid}/restore")]
-    public async Task<ActionResult<AdminApiResponse<AdminMutationResponse>>> RestorePost(Guid id, CancellationToken cancellationToken)
-    {
-        if (!TryGetAdminId(out var adminId)) return UnauthorizedResponse();
-        return ToResult(await mediator.Send(new RestoreAdminPostCommand(adminId, id, PostType.Post), cancellationToken));
-    }
+    public Task<IActionResult> RestorePost(Guid id, AdminContentDecisionRequest request, CancellationToken cancellationToken) =>
+        AdminMutation(async () => await workspace.ModerateAsync(await AdminId(cancellationToken), id, PostType.Post, PostStatus.Published, request, cancellationToken));
 
     [HttpDelete("posts/{id:guid}")]
-    public async Task<ActionResult<AdminApiResponse<AdminMutationResponse>>> DeletePost(Guid id, CancellationToken cancellationToken)
-    {
-        if (!TryGetAdminId(out var adminId)) return UnauthorizedResponse();
-        return ToResult(await mediator.Send(new DeleteAdminPostCommand(adminId, id, PostType.Post), cancellationToken));
-    }
+    public Task<IActionResult> DeletePost(Guid id, AdminContentDecisionRequest request, CancellationToken cancellationToken) =>
+        AdminMutation(async () => await workspace.ModerateAsync(await AdminId(cancellationToken), id, PostType.Post, PostStatus.Deleted, request, cancellationToken));
 
     [HttpGet("videos")]
     public async Task<ActionResult<AdminApiResponse<AdminPagedResponse<AdminPostSummaryResponse>>>> Videos(
@@ -159,50 +136,32 @@ public sealed class AdminController(IMediator mediator) : ControllerBase
         ToResult(await mediator.Send(new GetAdminPostDetailQuery(id, PostType.Article), cancellationToken));
 
     [HttpPatch("articles/{id:guid}/hide")]
-    public async Task<ActionResult<AdminApiResponse<AdminMutationResponse>>> HideArticle(Guid id, CancellationToken cancellationToken)
-    {
-        if (!TryGetAdminId(out var adminId)) return UnauthorizedResponse();
-        return ToResult(await mediator.Send(new HideAdminPostCommand(adminId, id, PostType.Article), cancellationToken));
-    }
+    public Task<IActionResult> HideArticle(Guid id, AdminContentDecisionRequest request, CancellationToken cancellationToken) =>
+        AdminMutation(async () => await workspace.ModerateAsync(await AdminId(cancellationToken), id, PostType.Article, PostStatus.Hidden, request, cancellationToken));
 
     [HttpPatch("articles/{id:guid}/restore")]
-    public async Task<ActionResult<AdminApiResponse<AdminMutationResponse>>> RestoreArticle(Guid id, CancellationToken cancellationToken)
-    {
-        if (!TryGetAdminId(out var adminId)) return UnauthorizedResponse();
-        return ToResult(await mediator.Send(new RestoreAdminPostCommand(adminId, id, PostType.Article), cancellationToken));
-    }
+    public Task<IActionResult> RestoreArticle(Guid id, AdminContentDecisionRequest request, CancellationToken cancellationToken) =>
+        AdminMutation(async () => await workspace.ModerateAsync(await AdminId(cancellationToken), id, PostType.Article, PostStatus.Published, request, cancellationToken));
 
     [HttpDelete("articles/{id:guid}")]
-    public async Task<ActionResult<AdminApiResponse<AdminMutationResponse>>> DeleteArticle(Guid id, CancellationToken cancellationToken)
-    {
-        if (!TryGetAdminId(out var adminId)) return UnauthorizedResponse();
-        return ToResult(await mediator.Send(new DeleteAdminPostCommand(adminId, id, PostType.Article), cancellationToken));
-    }
+    public Task<IActionResult> DeleteArticle(Guid id, AdminContentDecisionRequest request, CancellationToken cancellationToken) =>
+        AdminMutation(async () => await workspace.ModerateAsync(await AdminId(cancellationToken), id, PostType.Article, PostStatus.Deleted, request, cancellationToken));
 
     [HttpGet("videos/{id:guid}")]
     public async Task<ActionResult<AdminApiResponse<AdminPostDetailResponse>>> VideoDetail(Guid id, CancellationToken cancellationToken) =>
         ToResult(await mediator.Send(new GetAdminPostDetailQuery(id, PostType.ShortVideo), cancellationToken));
 
     [HttpPatch("videos/{id:guid}/hide")]
-    public async Task<ActionResult<AdminApiResponse<AdminMutationResponse>>> HideVideo(Guid id, CancellationToken cancellationToken)
-    {
-        if (!TryGetAdminId(out var adminId)) return UnauthorizedResponse();
-        return ToResult(await mediator.Send(new HideAdminPostCommand(adminId, id, PostType.ShortVideo), cancellationToken));
-    }
+    public Task<IActionResult> HideVideo(Guid id, AdminContentDecisionRequest request, CancellationToken cancellationToken) =>
+        AdminMutation(async () => await workspace.ModerateAsync(await AdminId(cancellationToken), id, PostType.ShortVideo, PostStatus.Hidden, request, cancellationToken));
 
     [HttpPatch("videos/{id:guid}/restore")]
-    public async Task<ActionResult<AdminApiResponse<AdminMutationResponse>>> RestoreVideo(Guid id, CancellationToken cancellationToken)
-    {
-        if (!TryGetAdminId(out var adminId)) return UnauthorizedResponse();
-        return ToResult(await mediator.Send(new RestoreAdminPostCommand(adminId, id, PostType.ShortVideo), cancellationToken));
-    }
+    public Task<IActionResult> RestoreVideo(Guid id, AdminContentDecisionRequest request, CancellationToken cancellationToken) =>
+        AdminMutation(async () => await workspace.ModerateAsync(await AdminId(cancellationToken), id, PostType.ShortVideo, PostStatus.Published, request, cancellationToken));
 
     [HttpDelete("videos/{id:guid}")]
-    public async Task<ActionResult<AdminApiResponse<AdminMutationResponse>>> DeleteVideo(Guid id, CancellationToken cancellationToken)
-    {
-        if (!TryGetAdminId(out var adminId)) return UnauthorizedResponse();
-        return ToResult(await mediator.Send(new DeleteAdminPostCommand(adminId, id, PostType.ShortVideo), cancellationToken));
-    }
+    public Task<IActionResult> DeleteVideo(Guid id, AdminContentDecisionRequest request, CancellationToken cancellationToken) =>
+        AdminMutation(async () => await workspace.ModerateAsync(await AdminId(cancellationToken), id, PostType.ShortVideo, PostStatus.Deleted, request, cancellationToken));
 
     [HttpGet("reports")]
     public async Task<ActionResult<AdminApiResponse<AdminPagedResponse<AdminReportSummaryResponse>>>> Reports(
@@ -211,28 +170,24 @@ public sealed class AdminController(IMediator mediator) : ControllerBase
         [FromQuery] ReportStatus? status = null,
         [FromQuery] ReportTargetType? targetType = null,
         [FromQuery] ReportReason? reason = null,
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] string? sortDirection = null,
         CancellationToken cancellationToken = default) =>
-        OkResponse(await mediator.Send(new GetAdminReportsQuery(page, pageSize, status, targetType, reason, sortBy, sortDirection), cancellationToken));
+        OkResponse(await mediator.Send(new GetAdminReportsQuery(page, pageSize, status, targetType, reason, sortBy, sortDirection, from, to), cancellationToken));
 
     [HttpGet("reports/{id:guid}")]
     public async Task<ActionResult<AdminApiResponse<AdminReportDetailResponse>>> ReportDetail(Guid id, CancellationToken cancellationToken) =>
         ToResult(await mediator.Send(new GetAdminReportDetailQuery(id), cancellationToken));
 
     [HttpPatch("reports/{id:guid}/approve")]
-    public async Task<ActionResult<AdminApiResponse<AdminMutationResponse>>> ApproveReport(Guid id, ApproveAdminReportRequest request, CancellationToken cancellationToken)
-    {
-        if (!TryGetAdminId(out var adminId)) return UnauthorizedResponse();
-        return ToResult(await mediator.Send(new ApproveAdminReportCommand(adminId, id, request.Action), cancellationToken));
-    }
+    public Task<IActionResult> ApproveReport(Guid id, AdminReportDecisionRequest request, CancellationToken cancellationToken) =>
+        AdminMutation(async () => await workspace.ReportDecisionAsync(await AdminId(cancellationToken), id, true, request, cancellationToken));
 
     [HttpPatch("reports/{id:guid}/reject")]
-    public async Task<ActionResult<AdminApiResponse<AdminMutationResponse>>> RejectReport(Guid id, CancellationToken cancellationToken)
-    {
-        if (!TryGetAdminId(out var adminId)) return UnauthorizedResponse();
-        return ToResult(await mediator.Send(new RejectAdminReportCommand(adminId, id), cancellationToken));
-    }
+    public Task<IActionResult> RejectReport(Guid id, AdminReportDecisionRequest request, CancellationToken cancellationToken) =>
+        AdminMutation(async () => await workspace.ReportDecisionAsync(await AdminId(cancellationToken), id, false, request, cancellationToken));
 
     [HttpGet("hashtags")]
     public async Task<ActionResult<AdminApiResponse<AdminPagedResponse<AdminHashtagSummaryResponse>>>> Hashtags(
@@ -287,13 +242,15 @@ public sealed class AdminController(IMediator mediator) : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] Guid? adminId = null,
+        [FromQuery] string? targetType = null,
+        [FromQuery] Guid? targetId = null,
         [FromQuery] string? action = null,
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] string? sortDirection = null,
         CancellationToken cancellationToken = default) =>
-        OkResponse(await mediator.Send(new GetAdminLogsQuery(page, pageSize, adminId, action, from, to, sortBy, sortDirection), cancellationToken));
+        OkResponse(await mediator.Send(new GetAdminLogsQuery(page, pageSize, adminId, action, from, to, sortBy, sortDirection, targetType, targetId), cancellationToken));
 
     private bool TryGetAdminId(out Guid userId) => Guid.TryParse(User.FindFirstValue("user_id"), out userId);
 
@@ -322,9 +279,9 @@ public sealed class AdminController(IMediator mediator) : ControllerBase
         value is null ? NotFoundResponse() : OkResponse(value);
 }
 
-public sealed record UpdateAdminUserStatusRequest(AccountStatus Status, string? Reason);
+public sealed record UpdateAdminUserStatusRequest(AccountStatus Status, string? Reason, AccountStatus? ExpectedStatus = null);
 public sealed record UpdateAdminUserVerifyRequest(bool IsVerified);
-public sealed record UpdateAdminUserAccountStyleRequest(AccountStyle AccountStyle);
+public sealed record UpdateAdminUserAccountStyleRequest(AccountStyle AccountStyle, string? Reason = null, AccountStyle? ExpectedAccountStyle = null);
 public sealed record RejectAdminIdentityRequest(string? Reason);
 public sealed record ApproveAdminReportRequest(string? Action);
 public sealed record RenameAdminHashtagRequest(string Name);
