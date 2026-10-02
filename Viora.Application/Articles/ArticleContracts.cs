@@ -88,13 +88,19 @@ public sealed record ArticleResponse(
 
 public interface IArticleRepository
 {
+    Task<ArticlePublicationAccount?> GetPublicationAccountAsync(Guid userId, CancellationToken cancellationToken);
     Task<MyArticlesResponse> GetMineAsync(Guid userId, int page, int pageSize, CancellationToken cancellationToken);
-    Task<AccountStyle?> GetUserAccountStyleAsync(Guid userId, CancellationToken cancellationToken);
     Task AddAsync(Post article, CancellationToken cancellationToken);
     Task<Post?> GetForUpdateAsync(Guid articleId, CancellationToken cancellationToken);
     Task PrepareBlockOrderUpdateAsync(Post article, CancellationToken cancellationToken);
     Task<bool> RecordViewAsync(Guid userId, Guid articleId, CancellationToken cancellationToken);
     Task<Result<ArticleResponse>> GetAsync(Guid userId, Guid articleId, CancellationToken cancellationToken);
+}
+
+public sealed record ArticlePublicationAccount(AccountStyle AccountStyle, bool CanCreateArticle)
+{
+    public bool CanPublish => ArticleCapabilities.CanPublish(AccountStyle);
+    public bool CanManage => CanPublish || CanCreateArticle;
 }
 
 public static class ArticleAccess

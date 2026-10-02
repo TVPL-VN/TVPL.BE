@@ -44,6 +44,9 @@ public sealed class User : AuditableEntity
     public bool IsVerified { get; set; }
     public UserIdentityState IdentityStatus { get; set; } = UserIdentityState.NotVerified;
     public AccountStyle AccountStyle { get; set; } = AccountStyle.Personal;
+    // Legacy article grant retained for managing existing articles after taxonomy migration.
+    // New publication uses ArticleCapabilities; this flag does not bypass profile eligibility.
+    public bool CanCreateArticle { get; set; }
     public Account Account { get; set; } = null!;
     public UserSettings? Settings { get; set; }
     public ICollection<UserIdentity> IdentitySubmissions { get; set; } = [];

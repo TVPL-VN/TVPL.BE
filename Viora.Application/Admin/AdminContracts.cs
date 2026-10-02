@@ -12,11 +12,11 @@ public static class AccountStyleLabels
     public static string ToVietnamese(AccountStyle value) => value switch
     {
         AccountStyle.Personal => "Cá nhân",
-        AccountStyle.Creator => "Nhà sáng tạo",
-        AccountStyle.Journalist => "Nhà báo",
+        AccountStyle.Lawyer => "Luật sư",
+        AccountStyle.LegalExpert => "Chuyên gia pháp lý",
+        AccountStyle.LawFirm => "Công ty luật",
         AccountStyle.Business => "Doanh nghiệp",
         AccountStyle.Organization => "Tổ chức",
-        AccountStyle.Agency => "Cơ quan",
         _ => throw new ArgumentOutOfRangeException(nameof(value), value, null)
     };
 }

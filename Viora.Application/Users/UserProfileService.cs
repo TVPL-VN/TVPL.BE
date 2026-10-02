@@ -6,6 +6,14 @@ public sealed class UserProfileService(
     IUserProfileRepository repository,
     IProfileImageStorage? imageStorage = null) : IUserProfileService
 {
+    public async Task<UserResponse> GetAsync(Guid accountId, CancellationToken cancellationToken)
+    {
+        var account = await GetActiveAccountAsync(accountId, cancellationToken);
+        if (account.User is null)
+            throw new UserProfileException(UserProfileError.ProfileNotFound, "Hồ sơ người dùng chưa tồn tại.");
+        return Map(account, account.User);
+    }
+
     public async Task<UserResponse> CreateAsync(
         Guid accountId,
         SaveUserProfileCommand command,
@@ -31,7 +39,9 @@ public sealed class UserProfileService(
             CoverUrl = coverUrl,
             Gender = command.Gender,
             IsVerified = false,
-            IdentityStatus = UserIdentityState.NotVerified
+            IdentityStatus = UserIdentityState.NotVerified,
+            AccountStyle = AccountStyle.Personal,
+            CanCreateArticle = false
         };
         account.User = user;
 
@@ -165,5 +175,7 @@ public sealed class UserProfileService(
         account.Role,
         user.IsVerified,
         user.IdentityStatus,
-        user.AccountStyle);
+        user.AccountStyle,
+        ArticleCapabilities.CanPublish(user.AccountStyle),
+        ArticleCapabilities.CanManage(user));
 }

@@ -15,6 +15,23 @@ public sealed class UsersController(IUserProfileService userProfileService) : Co
 {
     private const long ProfileRequestLimit = ProfileImageValidator.MaxFileBytes * 2 + 128 * 1024;
 
+    [HttpGet]
+    [ProducesResponseType<UserResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<UserProfileErrorResponse>(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<UserResponse>> Get(CancellationToken cancellationToken)
+    {
+        if (!TryGetAccountId(out var accountId))
+            return Unauthorized(new UserProfileErrorResponse("Token đăng nhập không hợp lệ."));
+        try
+        {
+            return Ok(await userProfileService.GetAsync(accountId, cancellationToken));
+        }
+        catch (UserProfileException exception)
+        {
+            return ProfileError(exception);
+        }
+    }
+
     [HttpPost]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(ProfileRequestLimit)]

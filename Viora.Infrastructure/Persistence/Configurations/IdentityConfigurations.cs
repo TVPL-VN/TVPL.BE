@@ -48,6 +48,7 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(x => x.Gender).HasDefaultValue(Gender.Unknown);
         builder.Property(x => x.IsVerified).HasDefaultValue(false);
         builder.Property(x => x.IdentityStatus).HasDefaultValue(UserIdentityState.NotVerified);
+        builder.Property(x => x.CanCreateArticle).HasDefaultValue(false);
         builder.HasIndex(x => x.AccountId).IsUnique();
         builder.HasOne(x => x.Account).WithOne(x => x.User).HasForeignKey<User>(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
     }

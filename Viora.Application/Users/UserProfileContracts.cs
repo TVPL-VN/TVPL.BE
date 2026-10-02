@@ -32,7 +32,9 @@ public sealed record UserResponse(
     AccountRole Role,
     bool IsVerified,
     UserIdentityState VerificationStatus,
-    AccountStyle AccountStyle = AccountStyle.Personal);
+    AccountStyle AccountStyle = AccountStyle.Personal,
+    bool CanCreateArticle = false,
+    bool CanManageArticles = false);
 
 public enum UserProfileError
 {
@@ -49,6 +51,7 @@ public sealed class UserProfileException(UserProfileError code, string message) 
 
 public interface IUserProfileService
 {
+    Task<UserResponse> GetAsync(Guid accountId, CancellationToken cancellationToken);
     Task<UserResponse> CreateAsync(Guid accountId, SaveUserProfileCommand command, CancellationToken cancellationToken);
     Task<UserResponse> UpdateAsync(Guid accountId, UpdateUserProfileCommand command, CancellationToken cancellationToken);
 }

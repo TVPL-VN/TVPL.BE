@@ -4,11 +4,11 @@ public enum AccountRole : short { User = 0, Moderator = 1, Admin = 2 }
 public enum AccountStyle : short
 {
     Personal = 0,
-    Creator = 1,
-    Journalist = 2,
-    Business = 3,
+    Lawyer = 1,
+    LegalExpert = 2,
+    LawFirm = 3,
     Organization = 4,
-    Agency = 5
+    Business = 5
 }
 public enum AccountStatus : short { Banned = 0, Active = 1, Deleted = 2 }
 public enum Gender : short { Unknown = 0, Male = 1, Female = 2 }

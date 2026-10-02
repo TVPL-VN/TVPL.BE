@@ -21,9 +21,9 @@ public sealed class ArticleRepository(AppDbContext dbContext) : IArticleReposito
         return new MyArticlesResponse(page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize), items);
     }
 
-    public Task<AccountStyle?> GetUserAccountStyleAsync(Guid userId, CancellationToken cancellationToken) =>
+    public Task<ArticlePublicationAccount?> GetPublicationAccountAsync(Guid userId, CancellationToken cancellationToken) =>
         dbContext.Users.Where(x => x.Id == userId)
-            .Select(x => (AccountStyle?)x.AccountStyle)
+            .Select(x => new ArticlePublicationAccount(x.AccountStyle, x.CanCreateArticle))
             .SingleOrDefaultAsync(cancellationToken);
 
     public Task AddAsync(Post article, CancellationToken cancellationToken) =>

@@ -106,5 +106,7 @@ public sealed class GoogleLoginService(
             account.Role,
             account.User.IsVerified,
             account.User.IdentityStatus,
-            account.User.AccountStyle);
+            account.User.AccountStyle,
+            ArticleCapabilities.CanPublish(account.User.AccountStyle),
+            ArticleCapabilities.CanManage(account.User));
 }

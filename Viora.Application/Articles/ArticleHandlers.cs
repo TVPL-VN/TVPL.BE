@@ -14,16 +14,16 @@ public sealed class CreateArticleHandler(
     public async Task<ArticleResponse> Handle(CreateArticleCommand request, CancellationToken cancellationToken)
     {
         await validator.ValidateAndThrowAsync(request, cancellationToken);
-        var accountStyle = await repository.GetUserAccountStyleAsync(request.UserId, cancellationToken);
-        if (accountStyle is null)
+        var account = await repository.GetPublicationAccountAsync(request.UserId, cancellationToken);
+        if (account is null)
         {
             throw new CreatePostException("USER_NOT_FOUND", "Không tìm thấy người dùng.");
         }
-        if (!accountStyle.Value.CanCreateArticle())
+        if (!account.CanPublish)
         {
             throw new CreatePostException(
-                "ARTICLE_ACCOUNT_STYLE_REQUIRED",
-                "Tài khoản của bạn chưa được cấp quyền đăng bài viết.");
+                "ARTICLE_CAPABILITY_REQUIRED",
+                "Chỉ luật sư, chuyên gia pháp lý hoặc công ty luật được đăng bài báo.");
         }
 
         var article = new Post
@@ -142,8 +142,8 @@ public sealed class GetMyArticlesHandler(IArticleRepository repository)
 {
     public async Task<Result<MyArticlesResponse>> Handle(GetMyArticlesQuery request, CancellationToken cancellationToken)
     {
-        var style = await repository.GetUserAccountStyleAsync(request.UserId, cancellationToken);
-        if (style is null || !style.Value.CanCreateArticle())
+        var account = await repository.GetPublicationAccountAsync(request.UserId, cancellationToken);
+        if (account is null || !account.CanManage)
             return Result<MyArticlesResponse>.Failure(PostInteractionError.Forbidden, "Bạn không có quyền quản lý bài báo.");
         if (request.Page < 1 || request.PageSize is < 1 or > 100 ||
             (long)(request.Page - 1) * request.PageSize > int.MaxValue)
