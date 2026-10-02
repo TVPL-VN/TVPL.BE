@@ -104,6 +104,11 @@ public static class DependencyInjection
         }
         services.AddSingleton(Options.Create(cloudinaryOptions));
         services.AddSingleton<IProfileImageStorage, CloudinaryProfileImageStorage>();
+        services.AddHttpClient("verification-private", client => client.Timeout = TimeSpan.FromSeconds(30))
+            .RemoveAllLoggers();
+        services.AddSingleton<Viora.Application.ProfessionalVerifications.IPrivateFileStorage, CloudinaryPrivateFileStorage>();
+        services.AddScoped<Viora.Application.ProfessionalVerifications.IProfessionalVerificationService, ProfessionalVerificationService>();
+        services.AddHostedService<VerificationFileCleanupWorker>();
         services.AddSingleton<IMediaStorage, CloudinaryMediaStorage>();
         services.AddSingleton<IStickerMediaStorage>(provider => (CloudinaryMediaStorage)provider.GetRequiredService<IMediaStorage>());
         services.AddScoped<IValidator<CreatePostCommand>, CreatePostValidator>();

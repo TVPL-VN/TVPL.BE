@@ -9,6 +9,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     private static readonly Random SharedRandom = Random.Shared;
 
     public DbSet<Account> Accounts => Set<Account>();
+    public DbSet<ProfessionalVerification> ProfessionalVerifications => Set<ProfessionalVerification>();
+    public DbSet<VerificationDocument> VerificationDocuments => Set<VerificationDocument>();
+    public DbSet<VerificationFileCleanup> VerificationFileCleanups => Set<VerificationFileCleanup>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<ExternalLogin> ExternalLogins => Set<ExternalLogin>();
     public DbSet<User> Users => Set<User>();
