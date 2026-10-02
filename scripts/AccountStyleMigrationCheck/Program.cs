@@ -8,6 +8,7 @@ using Viora.Infrastructure.Persistence.Migrations;
 
 try
 {
+    if (args.Length == 0) throw new ArgumentException("Pass a configuration file or --local, optionally --schema-audit.");
     var isLocal = args[0] == "--local";
     using var config = isLocal ? null : JsonDocument.Parse(File.ReadAllText(args[0]));
     var connectionString = isLocal
@@ -16,6 +17,17 @@ try
     var builder = new NpgsqlConnectionStringBuilder(connectionString) { Timeout = 8, CommandTimeout = 10 };
     await using var connection = new NpgsqlConnection(builder.ConnectionString);
     await connection.OpenAsync();
+    if (args.Contains("--cleanup-check"))
+    {
+        if (!isLocal) throw new ArgumentException("Cleanup checks require --local and a disposable database.");
+        await AccountStyleCleanupCheck.RunAsync(connection);
+        return;
+    }
+    if (args.Contains("--schema-audit"))
+    {
+        await AccountStyleSchemaAudit.RunAsync(connection);
+        return;
+    }
     // Read-only production audit: aggregate types and migration history, no identities.
     if (!isLocal)
     {

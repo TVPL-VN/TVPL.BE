@@ -42,12 +42,13 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
 {
     public void Configure(EntityTypeBuilder<User> builder)
     {
-        builder.ToTable("Users");
+        builder.ToTable("Users", table => table.HasCheckConstraint("CK_Users_AccountStyle", "\"AccountStyle\" BETWEEN 0 AND 5"));
         builder.HasKey(x => x.Id);
         builder.Property(x => x.DisplayName).HasMaxLength(100).IsRequired();
         builder.Property(x => x.Gender).HasDefaultValue(Gender.Unknown);
         builder.Property(x => x.IsVerified).HasDefaultValue(false);
         builder.Property(x => x.IdentityStatus).HasDefaultValue(UserIdentityState.NotVerified);
+        builder.Property(x => x.AccountStyle).HasDefaultValue(AccountStyle.Personal);
         builder.Property(x => x.CanCreateArticle).HasDefaultValue(false);
         builder.HasIndex(x => x.AccountId).IsUnique();
         builder.HasOne(x => x.Account).WithOne(x => x.User).HasForeignKey<User>(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
