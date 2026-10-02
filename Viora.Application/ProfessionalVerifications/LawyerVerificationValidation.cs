@@ -7,7 +7,6 @@ public static class LawyerVerificationValidation
     public const long MaxFileBytes = 10 * 1024 * 1024;
     public static readonly string[] Expertise = ["Dân sự", "Hình sự", "Đất đai", "Hôn nhân & Gia đình",
         "Lao động", "Doanh nghiệp", "Đầu tư", "M&A", "Hợp đồng", "Thuế", "Sở hữu trí tuệ", "Thương mại"];
-    public static readonly string[] Languages = ["Tiếng Việt", "Tiếng Anh", "Tiếng Pháp", "Tiếng Trung", "Tiếng Nhật", "Tiếng Hàn", "Tiếng Đức", "Tiếng Nga"];
 
     public static LawyerVerificationData Validate(LawyerVerificationData? data, int completedStep)
     {
@@ -43,8 +42,7 @@ public static class LawyerVerificationValidation
                 BarAssociation = Text(p.BarAssociation, "publicProfile.barAssociation", 200, publicRequired),
                 OrganizationName = Text(p.OrganizationName, "publicProfile.organizationName", 200, false),
                 Position = Text(p.Position, "publicProfile.position", 100, false),
-                Location = Text(p.Location, "publicProfile.location", 200, publicRequired),
-                Languages = Choices(p.Languages, "publicProfile.languages", Languages, publicRequired)
+                Location = Text(p.Location, "publicProfile.location", 200, publicRequired)
             },
             Verification = new()
             {

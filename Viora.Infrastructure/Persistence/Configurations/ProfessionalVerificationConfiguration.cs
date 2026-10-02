@@ -35,7 +35,6 @@ internal sealed class ProfessionalVerificationConfiguration : IEntityTypeConfigu
                 p.Property(x => x.OrganizationName).HasJsonPropertyName("organizationName");
                 p.Property(x => x.Position).HasJsonPropertyName("position");
                 p.Property(x => x.Location).HasJsonPropertyName("location");
-                p.Property(x => x.Languages).HasJsonPropertyName("languages");
             });
             data.OwnsOne(x => x.Verification, p =>
             {

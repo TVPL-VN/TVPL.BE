@@ -34,7 +34,6 @@ public sealed class LawyerPublicProfile
     public string? OrganizationName { get; set; }
     public string? Position { get; set; }
     public string Location { get; set; } = "";
-    public string[] Languages { get; set; } = [];
 }
 
 public sealed class LawyerPracticeVerification

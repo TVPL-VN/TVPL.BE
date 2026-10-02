@@ -2355,11 +2355,6 @@ namespace Viora.Infrastructure.Persistence.Migrations
                                         .HasColumnType("text[]")
                                         .HasAnnotation("Relational:JsonPropertyName", "expertise");
 
-                                    b2.Property<string[]>("Languages")
-                                        .IsRequired()
-                                        .HasColumnType("text[]")
-                                        .HasAnnotation("Relational:JsonPropertyName", "languages");
-
                                     b2.Property<string>("Location")
                                         .IsRequired()
                                         .HasColumnType("text")
