@@ -55,5 +55,5 @@ public sealed class AdminStatutoryController(IStatutoryRepository repository) : 
     [HttpPost("sections/{id:guid}/relations")]
     public async Task<IActionResult> AddSectionRelation(Guid id, SaveSectionRelationRequest r, CancellationToken t) { await repository.AddSectionRelationAsync(id, r, t); return NoContent(); }
 }
-public sealed record CatalogRequest([property: Required, MaxLength(255)] string Name);
+public sealed record CatalogRequest([Required, MaxLength(255)] string Name);
 public sealed record PublicationRequest(bool Publish);
