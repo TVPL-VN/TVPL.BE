@@ -53,7 +53,7 @@ internal sealed class AdminLogConfiguration : IEntityTypeConfiguration<AdminLog>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Action).HasMaxLength(100).IsRequired();
         builder.Property(x => x.TargetType).HasMaxLength(100).IsRequired();
-        builder.Property(x => x.Description).HasMaxLength(1000);
+        builder.Property(x => x.Description).HasColumnType("text");
         builder.HasIndex(x => x.AdminId);
         builder.HasIndex(x => x.CreatedAt);
         builder.HasOne(x => x.Admin).WithMany().HasForeignKey(x => x.AdminId).OnDelete(DeleteBehavior.Restrict);

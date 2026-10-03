@@ -402,7 +402,9 @@ public sealed class AdminRepository(AppDbContext dbContext) : IAdminRepository
             if (query.TargetType is not null) source = source.Where(x => x.TargetType == query.TargetType);
             if (query.TargetId is not null) source = source.Where(x => x.TargetId == query.TargetId);
             source = SortAsc(query.SortDirection) ? source.OrderBy(x => x.CreatedAt) : source.OrderByDescending(x => x.CreatedAt);
-            return await PageAsync(source.Select(x => new AdminLogSummaryResponse(x.Id, x.AdminId, x.Admin.DisplayName, x.Action, x.TargetType, x.TargetId, x.Description, x.CreatedAt)
+            return await PageAsync(source.Select(x => new AdminLogSummaryResponse(x.Id, x.AdminId, x.Admin.DisplayName, x.Action, x.TargetType, x.TargetId,
+                x.Action == "AddMissingSection" || x.Action == "CorrectSectionData"
+                    ? "Dữ liệu số hóa văn bản pháp luật được cập nhật. Xem chi tiết để đọc lý do và dữ liệu trước/sau." : x.Description, x.CreatedAt)
             {
                 TargetDisplayName = x.TargetType == "User" ? dbContext.Users.Where(u => u.Id == x.TargetId).Select(u => u.DisplayName).FirstOrDefault()
                     : x.TargetType == "ProfessionalVerification" ? dbContext.ProfessionalVerifications.Where(v => v.Id == x.TargetId).Select(v => v.Account.User!.DisplayName).FirstOrDefault()

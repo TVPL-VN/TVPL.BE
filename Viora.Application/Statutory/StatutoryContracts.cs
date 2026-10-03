@@ -34,6 +34,11 @@ public sealed record SaveStatutoryRequest(string Title, string Number, Statutory
     DateOnly IssuedOn, DateOnly EffectiveFrom, DateOnly? ExpiresOn, bool PartiallyExpired,
     string? Summary, string? SourceUrl, string? FileUrl, IReadOnlyList<Guid>? FieldIds);
 public sealed record SaveSectionRequest(Guid? ParentId, LegalNodeType Type, string Number, string Title, int Order, string Content);
+public sealed record DataCorrectionRequest(Guid? ParentId, LegalNodeType Type, string Number, string Title,
+    int Order, string Content, string Reason, Guid? VersionId = null)
+{
+    public SaveSectionRequest ToSection() => new(ParentId, Type, Number, Title, Order, Content);
+}
 public sealed record AmendSectionRequest(string Content, DateOnly ValidFrom, Guid ChangedByDocumentId,
     LegalChangeType ChangeType, string? Note, bool Publish);
 public sealed record SaveRelationRequest(Guid RelatedDocumentId, LegalRelationType Type);
@@ -50,6 +55,8 @@ public interface IStatutoryRepository
     Task PublishAsync(Guid id, Guid actor, bool publish, CancellationToken token);
     Task DeleteAsync(Guid id, CancellationToken token);
     Task<SectionResponse> SaveSectionAsync(Guid docId, Guid? id, Guid actor, SaveSectionRequest request, CancellationToken token);
+    Task<SectionResponse> AddMissingSectionAsync(Guid docId, Guid actor, DataCorrectionRequest request, CancellationToken token);
+    Task<SectionResponse> CorrectSectionAsync(Guid docId, Guid id, Guid actor, DataCorrectionRequest request, CancellationToken token);
     Task DeleteSectionAsync(Guid id, CancellationToken token);
     Task<IReadOnlyList<SectionVersionResponse>> VersionsAsync(Guid sectionId, bool admin, CancellationToken token);
     Task<SectionVersionResponse> AmendAsync(Guid sectionId, Guid actor, AmendSectionRequest request, CancellationToken token);

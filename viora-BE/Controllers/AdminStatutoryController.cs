@@ -40,6 +40,10 @@ public sealed class AdminStatutoryController(IStatutoryRepository repository) : 
     public async Task<IActionResult> CreateSection(Guid docId, SaveSectionRequest r, CancellationToken t) => Ok(await repository.SaveSectionAsync(docId, null, Actor, r, t));
     [HttpPut("{docId:guid}/sections/{id:guid}")]
     public async Task<IActionResult> UpdateSection(Guid docId, Guid id, SaveSectionRequest r, CancellationToken t) => Ok(await repository.SaveSectionAsync(docId, id, Actor, r, t));
+    [HttpPost("{docId:guid}/sections/missing")]
+    public async Task<IActionResult> AddMissingSection(Guid docId, DataCorrectionRequest r, CancellationToken t) => Ok(await repository.AddMissingSectionAsync(docId, Actor, r, t));
+    [HttpPut("{docId:guid}/sections/{id:guid}/correction")]
+    public async Task<IActionResult> CorrectSection(Guid docId, Guid id, DataCorrectionRequest r, CancellationToken t) => Ok(await repository.CorrectSectionAsync(docId, id, Actor, r, t));
     [HttpDelete("sections/{id:guid}")]
     public async Task<IActionResult> DeleteSection(Guid id, CancellationToken t) { await repository.DeleteSectionAsync(id, t); return NoContent(); }
     [HttpGet("sections/{id:guid}/versions")]

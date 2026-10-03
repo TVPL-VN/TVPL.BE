@@ -107,16 +107,19 @@ public sealed class AdminWorkspaceService(AppDbContext db, IPrivateFileStorage s
             verificationId is null ? null : (await db.ProfessionalVerifications.AsNoTracking().SingleAsync(x => x.Id == verificationId, ct)).VerificationData.PublicProfile);
     }
 
-    private IQueryable<AdminLogSummaryResponse> Logs() => db.AdminLogs.AsNoTracking().Select(x => new AdminLogSummaryResponse
+    private IQueryable<AdminLogSummaryResponse> Logs(bool fullDescriptions = false) => db.AdminLogs.AsNoTracking().Select(x => new AdminLogSummaryResponse
     {
         Id = x.Id, AdminId = x.AdminId, AdminDisplayName = x.Admin.DisplayName, Action = x.Action,
-        TargetType = x.TargetType, TargetId = x.TargetId, Description = x.Description, CreatedAt = x.CreatedAt,
+        TargetType = x.TargetType, TargetId = x.TargetId,
+        Description = !fullDescriptions && (x.Action == "AddMissingSection" || x.Action == "CorrectSectionData")
+            ? "Dữ liệu số hóa văn bản pháp luật được cập nhật. Xem chi tiết để đọc lý do và dữ liệu trước/sau." : x.Description,
+        CreatedAt = x.CreatedAt,
         TargetDisplayName = x.TargetType == "User" ? db.Users.Where(u => u.Id == x.TargetId).Select(u => u.DisplayName).FirstOrDefault()
             : x.TargetType == "ProfessionalVerification" ? db.ProfessionalVerifications.Where(v => v.Id == x.TargetId).Select(v => v.Account.User!.DisplayName).FirstOrDefault()
             : x.TargetType == "Post" || x.TargetType == "Video" ? db.Posts.Where(p => p.Id == x.TargetId).Select(p => p.User.DisplayName).FirstOrDefault() : null
     });
     private Task<List<AdminLogSummaryResponse>> History(string type, Guid id, CancellationToken ct) => Logs().Where(x => x.TargetType == type && x.TargetId == id).OrderByDescending(x => x.CreatedAt).Take(30).ToListAsync(ct);
-    public async Task<AdminLogSummaryResponse> AuditAsync(Guid id, CancellationToken ct) => await Logs().SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw Missing();
+    public async Task<AdminLogSummaryResponse> AuditAsync(Guid id, CancellationToken ct) => await Logs(true).SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw Missing();
 
     public async Task<AdminWorkOverview> OverviewAsync(CancellationToken ct)
     {

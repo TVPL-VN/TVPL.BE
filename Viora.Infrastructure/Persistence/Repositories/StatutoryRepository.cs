@@ -1,4 +1,5 @@
 using System.Data;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Viora.Application.Statutory;
 using Viora.Domain.Entities;
@@ -155,37 +156,96 @@ public sealed class StatutoryRepository(AppDbContext db) : IStatutoryRepository
             await db.LegalSectionVersions.AnyAsync(x => x.ChangedByDocumentId == id, t)) throw Conflict("Không thể xóa văn bản có nội dung, lịch sử hoặc liên kết. Hãy ngừng công bố.");
         db.Remove(d); await db.SaveChangesAsync(t); await tx.CommitAsync(t);
     }
-    public async Task<SectionResponse> SaveSectionAsync(Guid docId, Guid? id, Guid actor, SaveSectionRequest r, CancellationToken t)
+    public Task<SectionResponse> SaveSectionAsync(Guid docId, Guid? id, Guid actor, SaveSectionRequest r, CancellationToken t) =>
+        SaveSectionCoreAsync(docId, id, actor, r, null, null, t);
+    public Task<SectionResponse> AddMissingSectionAsync(Guid docId, Guid actor, DataCorrectionRequest r, CancellationToken t) =>
+        SaveSectionCoreAsync(docId, null, actor, r.ToSection(), CorrectionReason(r.Reason), null, t);
+    public Task<SectionResponse> CorrectSectionAsync(Guid docId, Guid id, Guid actor, DataCorrectionRequest r, CancellationToken t) =>
+        SaveSectionCoreAsync(docId, id, actor, r.ToSection(), CorrectionReason(r.Reason), r.VersionId, t);
+    private static string CorrectionReason(string reason) =>
+        !string.IsNullOrWhiteSpace(reason) && reason.Trim().Length <= 1000 ? reason.Trim() : throw Invalid("Lý do hiệu chỉnh bắt buộc, tối đa 1000 ký tự.");
+    private async Task<SectionResponse> SaveSectionCoreAsync(Guid docId, Guid? id, Guid actor, SaveSectionRequest r, string? reason, Guid? versionId, CancellationToken t)
     {
         await using var tx = await db.Database.BeginTransactionAsync(t);
         await LockDocument(docId, t);
         var d = await db.StatutoryDocuments.SingleOrDefaultAsync(x => x.Id == docId, t) ?? throw Missing();
-        if (d.PublishedAt != null) throw Conflict("Cấu trúc đã công bố được bảo toàn. Dùng luồng sửa đổi nội dung.");
-        if (r.Number.Length > 100 || string.IsNullOrWhiteSpace(r.Title) || r.Title.Length > 1000 || r.Content.Length > 1000000 || r.Order < 0) throw Invalid("Tiêu đề, số thứ tự hoặc nội dung không hợp lệ.");
+        var correction = reason is not null;
+        if (!correction && (d.PublishedAt != null || d.IsPublished)) throw Conflict("Văn bản đã công bố. Dùng luồng bổ sung hoặc hiệu chỉnh dữ liệu có lý do và Audit Log.");
+        if (correction && d.PublishedAt == null) throw Conflict("Bản nháp dùng chức năng thêm/sửa thông thường.");
+        if (correction && !await db.Users.AnyAsync(x => x.Id == actor && x.Account.Role == AccountRole.Admin && x.Account.Status == AccountStatus.Active && x.Account.DeletedAt == null, t))
+            throw new StatutoryException(403, "Chỉ quản trị viên đang hoạt động được hiệu chỉnh dữ liệu.");
+        if (r.Number.Length > 100 || (r.Type < LegalNodeType.Clause && string.IsNullOrWhiteSpace(r.Title)) || r.Title.Length > 1000 || r.Content.Length > 1000000 || r.Order < 0 || r.Order == int.MaxValue) throw Invalid("Tiêu đề, số thứ tự hoặc nội dung không hợp lệ.");
         if (r.Number.Contains('/') || r.Number.Contains('\\') || r.Number.Contains(':') || r.Number.Any(char.IsControl))
             throw Invalid("Số/ký hiệu mục không được chứa ký tự phân tách đường dẫn hoặc ký tự điều khiển.");
         var parent = r.ParentId is null ? null : await db.LegalSections.SingleOrDefaultAsync(x => x.Id == r.ParentId && x.DocumentId == docId, t) ?? throw Invalid("Mục cha phải thuộc cùng văn bản.");
         if (!StatutoryRules.CanParent(parent?.Type, r.Type)) throw Invalid("Cấp mục không phù hợp với mục cha.");
         var s = id is null ? new LegalSection { Id = Guid.NewGuid(), DocumentId = docId } : await db.LegalSections.Include(x => x.Versions).SingleOrDefaultAsync(x => x.Id == id && x.DocumentId == docId, t) ?? throw Missing();
-        if (id is not null && await db.LegalSections.AnyAsync(x => x.ParentId == id, t) && (s.ParentId != r.ParentId || s.Type != r.Type || s.Number != r.Number)) throw Conflict("Không đổi cấp, số hoặc cha khi mục có con. Sửa các mục con trước.");
+        var all = await db.LegalSections.Where(x => x.DocumentId == docId).ToListAsync(t);
+        if (!correction && id is not null && all.Any(x => x.ParentId == id) && (s.ParentId != r.ParentId || s.Type != r.Type || s.Number != r.Number)) throw Conflict("Không đổi cấp, số hoặc cha khi mục có con. Sửa các mục con trước.");
+        if (all.Any(x => x.ParentId == s.Id && !StatutoryRules.CanParent(r.Type, x.Type))) throw Invalid("Cấp mục mới không phù hợp với các mục con hiện có.");
+        var v = id is null ? null : correction ? s.Versions.SingleOrDefault(x => x.Id == versionId) : s.Versions.SingleOrDefault();
+        if (correction && id is not null && v is null) throw Conflict("Chọn đúng phiên bản nội dung cần hiệu chỉnh; tải lại văn bản trước khi lưu.");
+        var before = id is null ? null : SectionSnapshot(s, v);
+        var prior = all.ToDictionary(x => x.Id, x => new { x.Path, x.Order });
+        var oldPath = s.Path;
+        var oldParent = s.ParentId;
+        var oldOrder = s.Order;
         var cursor = parent; while (cursor is not null) { if (cursor.Id == s.Id) throw Invalid("Không thể tạo vòng lặp trong cấu trúc."); cursor = cursor.ParentId is null ? null : await db.LegalSections.FindAsync(new object[] { cursor.ParentId }, t); }
         s.ParentId = r.ParentId; s.Type = r.Type; s.Title = r.Title.Trim(); s.Number = r.Number.Trim(); s.Order = r.Order;
         s.Path = (parent?.Path is null ? "" : parent.Path + "/") + $"{(int)s.Type}:{(s.Number.Length > 0 ? s.Number : s.Id.ToString("N"))}";
         if (s.Path.Length > 1000) throw Invalid("Đường dẫn cấu trúc quá dài.");
         if (await db.LegalSections.AnyAsync(x => x.DocumentId == docId && x.Id != s.Id && x.Path == s.Path, t)) throw Conflict("Số/ký hiệu mục đã tồn tại trong cùng mục cha.");
+        if (correction)
+        {
+            if (id is not null && oldPath != s.Path)
+                foreach (var child in all.Where(x => x.Id != s.Id && x.Path.StartsWith(oldPath + "/", StringComparison.Ordinal)))
+                {
+                    child.Path = s.Path + child.Path[oldPath.Length..];
+                    if (child.Path.Length > 1000) throw Invalid("Đường dẫn cấu trúc quá dài.");
+                }
+            if (all.Select(x => x.Path).Append(id is null ? s.Path : "#new").GroupBy(x => x).Any(x => x.Count() > 1)) throw Conflict("Đường dẫn mục con bị trùng sau hiệu chỉnh.");
+            if (id is null || oldParent != r.ParentId || oldOrder != r.Order)
+            {
+                if (id is not null)
+                    foreach (var sibling in all.Where(x => x.Id != s.Id && x.ParentId == oldParent && x.Order > oldOrder)) sibling.Order--;
+                foreach (var sibling in all.Where(x => x.Id != s.Id && x.ParentId == r.ParentId && x.Order >= r.Order))
+                {
+                    if (sibling.Order == int.MaxValue) throw Conflict("Thứ tự mục vượt giới hạn; hiệu chỉnh thứ tự trước khi bổ sung.");
+                    sibling.Order++;
+                }
+            }
+        }
         if (id is null) db.Add(s);
-        var v = s.Versions.SingleOrDefault() ?? new LegalSectionVersion { Id = Guid.NewGuid(), SectionId = s.Id, VersionNumber = 1, ValidFrom = d.EffectiveFrom, IsPublished = true, CreatedBy = actor };
+        v ??= new LegalSectionVersion { Id = Guid.NewGuid(), SectionId = s.Id, VersionNumber = 1, ValidFrom = d.EffectiveFrom, IsPublished = true, CreatedBy = actor };
         v.Content = r.Content; if (!s.Versions.Contains(v)) s.Versions.Add(v);
+        if (correction)
+        {
+            db.AdminLogs.Add(new AdminLog {
+                Id = Guid.NewGuid(), AdminId = actor, Action = id is null ? "AddMissingSection" : "CorrectSectionData",
+                TargetType = "LegalSection", TargetId = s.Id,
+                Description = JsonSerializer.Serialize(new {
+                    DocumentId = docId, SectionId = s.Id, ParentSectionId = s.ParentId, AdminId = actor, Reason = reason,
+                    Before = before, After = SectionSnapshot(s, v),
+                    StructureChanges = all.Where(x => prior[x.Id].Path != x.Path || prior[x.Id].Order != x.Order)
+                        .Select(x => new { SectionId = x.Id, Before = prior[x.Id], After = new { x.Path, x.Order } }),
+                }),
+            });
+            d.UpdatedBy = actor; d.UpdatedAt = DateTime.UtcNow;
+        }
         await db.SaveChangesAsync(t); await tx.CommitAsync(t);
         return new(s.Id, s.ParentId, s.Type, s.Number, s.Title, s.Order, s.Path, Version(v, null));
     }
+    private static object SectionSnapshot(LegalSection s, LegalSectionVersion? v) => new {
+        s.Id, s.DocumentId, s.ParentId, s.Type, s.Number, s.Title, s.Order, s.Path,
+        Version = v is null ? null : new { v.Id, v.Content, v.VersionNumber, v.ValidFrom, v.ValidTo, v.ChangeType, v.ChangedByDocumentId, v.IsPublished, v.Note },
+    };
     public async Task DeleteSectionAsync(Guid id, CancellationToken t)
     {
         await using var tx = await db.Database.BeginTransactionAsync(t);
         var documentId = await db.LegalSections.Where(x => x.Id == id).Select(x => (Guid?)x.DocumentId).SingleOrDefaultAsync(t) ?? throw Missing();
         await LockDocument(documentId, t);
         var s = await db.LegalSections.Include(x => x.Document).Include(x => x.Versions).SingleOrDefaultAsync(x => x.Id == id, t) ?? throw Missing();
-        if (s.Document.PublishedAt != null || s.Versions.Count > 1 || await db.LegalSections.AnyAsync(x => x.ParentId == id, t) || await db.LegalSectionRelations.AnyAsync(x => x.SectionId == id || x.RelatedSectionId == id, t)) throw Conflict("Chỉ xóa mục lá của bản nháp chưa có lịch sử/liên kết.");
+        if (s.Document.PublishedAt != null || s.Document.IsPublished || s.Versions.Count > 1 || await db.LegalSections.AnyAsync(x => x.ParentId == id, t) || await db.LegalSectionRelations.AnyAsync(x => x.SectionId == id || x.RelatedSectionId == id, t)) throw Conflict("Chỉ xóa mục lá của bản nháp chưa có lịch sử/liên kết.");
         db.RemoveRange(s.Versions); db.Remove(s); await db.SaveChangesAsync(t); await tx.CommitAsync(t);
     }
     public async Task<IReadOnlyList<SectionVersionResponse>> VersionsAsync(Guid id, bool admin, CancellationToken t)
