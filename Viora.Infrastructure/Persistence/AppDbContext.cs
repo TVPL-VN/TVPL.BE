@@ -49,6 +49,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Report> Reports => Set<Report>();
     public DbSet<AdminLog> AdminLogs => Set<AdminLog>();
     public DbSet<LegalDocument> LegalDocuments => Set<LegalDocument>();
+    public DbSet<StatutoryDocument> StatutoryDocuments => Set<StatutoryDocument>();
+    public DbSet<LegalSection> LegalSections => Set<LegalSection>();
+    public DbSet<LegalSectionVersion> LegalSectionVersions => Set<LegalSectionVersion>();
+    public DbSet<LegalField> LegalFields => Set<LegalField>();
+    public DbSet<IssuingAuthority> IssuingAuthorities => Set<IssuingAuthority>();
+    public DbSet<StatutoryDocumentRelation> StatutoryDocumentRelations => Set<StatutoryDocumentRelation>();
+    public DbSet<LegalSectionRelation> LegalSectionRelations => Set<LegalSectionRelation>();
     public DbSet<UserLegalAcceptance> UserLegalAcceptances => Set<UserLegalAcceptance>();
 
     [DbFunction("translate", IsBuiltIn = true)]

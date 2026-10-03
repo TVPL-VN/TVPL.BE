@@ -10,7 +10,9 @@ public sealed class ActiveAdminAuthorization(IAdminWorkspaceService service) : A
 {
     protected override async Task HandleRequirementAsync(AuthorizationHandlerContext context, ActiveAdminRequirement requirement)
     {
-        if (context.User.Identity?.IsAuthenticated == true && context.User.IsInRole("2") &&
+        // Role claims can outlive a role change; the database checks the current
+        // role, account status and deletion state for this authenticated account.
+        if (context.User.Identity?.IsAuthenticated == true &&
             Guid.TryParse(context.User.FindFirstValue("sub"), out var accountId) &&
             await service.ActiveAdminAsync(accountId, CancellationToken.None) is not null)
             context.Succeed(requirement);

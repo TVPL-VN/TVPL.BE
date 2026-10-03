@@ -197,6 +197,7 @@ public static class DependencyInjection
         services.AddScoped<IAdminRepository, AdminRepository>();
         services.AddScoped<IAdminWorkspaceService, AdminWorkspaceService>();
         services.AddScoped<ILegalDocumentRepository, LegalDocumentRepository>();
+        services.AddScoped<Viora.Application.Statutory.IStatutoryRepository, StatutoryRepository>();
         services.Configure<FirebaseOptions>(configuration.GetSection("Firebase"));
         services.AddScoped<IDeviceTokenRepository, DeviceTokenRepository>();
         services.AddSingleton<ConnectionRegistry>();
