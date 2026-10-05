@@ -82,6 +82,9 @@ firebase-service-account.json
 .github/workflows/
 *service-account*.json
 *credentials*.json
+secrets/
+firebase-admin.json
+*firebase-adminsdk*.json
 *.jks
 *.keystore
 *.sqlite
