@@ -212,7 +212,9 @@ if (webOrigins.Length == 0)
         "http://localhost:3000",
         "http://localhost:5173",
         "http://localhost:8081",
-        "https://vioraadmin.vercel.app"
+        "https://vioraadmin.vercel.app",
+        "https://tvphapluat.com.vn",
+        "https://tvphapluat.online"
     ];
 }
 
@@ -292,6 +294,8 @@ app.MapGet("/reel/{contentId:guid}", (Guid contentId) =>
     CreateAppLinkFallback("reel", contentId.ToString("D")));
 app.MapGet("/article/{contentId:guid}", (Guid contentId) =>
     CreateAppLinkFallback("article", contentId.ToString("D")));
+app.MapGet("/user/{contentId:guid}", (Guid contentId) =>
+    CreateAppLinkFallback("user", contentId.ToString("D")));
 app.MapGet("/group/{inviteCode}", (string inviteCode) =>
 {
     if (inviteCode.Length is < 6 or > 20 || !inviteCode.All(char.IsLetterOrDigit))
@@ -311,39 +315,5 @@ app.Run();
 static IResult CreateAppLinkFallback(string contentType, string contentId)
 {
     var encodedId = Uri.EscapeDataString(contentId);
-    var deepLink = $"viora://{contentType}/{encodedId}";
-    var intentLink = $"intent://{contentType}/{encodedId}#Intent;scheme=viora;package=com.ankt.app;end";
-    var label = contentType switch
-    {
-        "reel" => "video ngắn",
-        "group" => "nhóm",
-        _ => "bài viết"
-    };
-
-    var html = $$"""
-        <!doctype html>
-        <html lang="vi">
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width,initial-scale=1">
-          <title>Mở {{label}} trên ANKT</title>
-          <style>
-            body { font-family: system-ui, sans-serif; margin: 0; background: #f5f7fd; color: #071a38; }
-            main { box-sizing: border-box; max-width: 420px; min-height: 100vh; margin: auto; padding: 48px 24px; display: grid; place-content: center; text-align: center; }
-            a { display: block; margin-top: 20px; padding: 14px 20px; border-radius: 10px; background: #2868d7; color: white; font-weight: 700; text-decoration: none; }
-            p { color: #64748b; line-height: 1.5; }
-          </style>
-        </head>
-        <body>
-          <main>
-            <h1>Mở trong ANKT</h1>
-            <p>Nhấn nút bên dưới để xem {{label}} trong ứng dụng.</p>
-            <a href="{{intentLink}}">Mở ứng dụng ANKT</a>
-            <a href="{{deepLink}}" style="background:#fff;color:#2868d7;border:1px solid #2868d7">Thử cách khác</a>
-          </main>
-        </body>
-        </html>
-        """;
-
-    return Results.Content(html, "text/html; charset=utf-8");
+    return Results.Redirect($"https://tvphapluat.com.vn/{contentType}/{encodedId}");
 }
