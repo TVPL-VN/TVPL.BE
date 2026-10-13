@@ -218,6 +218,11 @@ if (webOrigins.Length == 0)
     ];
 }
 
+webOrigins = webOrigins
+    .Concat(new[] { "https://tvphapluat.com.vn", "https://tvphapluat.online" })
+    .Distinct(StringComparer.OrdinalIgnoreCase)
+    .ToArray();
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Web", policy =>
