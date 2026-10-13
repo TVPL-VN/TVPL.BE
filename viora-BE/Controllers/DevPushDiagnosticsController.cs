@@ -10,7 +10,7 @@ using Viora.Infrastructure.Realtime;
 namespace viora_BE.Controllers;
 
 [ApiController]
-[Authorize]
+[Authorize(Policy = "ActiveAdmin")]
 [Route("api/dev/push-test")]
 public sealed class DevPushDiagnosticsController(
     IHostEnvironment environment,
