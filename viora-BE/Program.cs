@@ -1,5 +1,7 @@
 using Viora.Infrastructure;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
+using System.Net;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -75,6 +77,18 @@ static void LoadDotEnv()
 // Add services to the container.
 
 builder.Services.AddControllers();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Keep the framework's loopback trust defaults. Additional proxy addresses
+    // must be configured explicitly; never trust client-supplied X-Forwarded-For.
+    foreach (var configuredProxy in builder.Configuration.GetSection("ReverseProxy:KnownProxies").Get<string[]>() ?? [])
+    {
+        if (!IPAddress.TryParse(configuredProxy, out var address))
+            throw new InvalidOperationException("ReverseProxy:KnownProxies must contain IP addresses.");
+        options.KnownProxies.Add(address);
+    }
+});
 builder.Services.AddAuthorization(options => options.AddPolicy("ActiveAdmin", policy =>
     policy.RequireAuthenticatedUser().AddRequirements(new viora_BE.Security.ActiveAdminRequirement())));
 builder.Services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, viora_BE.Security.ActiveAdminAuthorization>();
@@ -149,26 +163,25 @@ if (!string.IsNullOrWhiteSpace(accessToken) &&
             }
         };
     });
-builder.Services.AddRateLimiter(options => options.AddPolicy("auth", context =>
-    RateLimitPartition.GetFixedWindowLimiter(
-        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-        _ => new FixedWindowRateLimiterOptions
-        {
-            PermitLimit = 5,
-            Window = TimeSpan.FromMinutes(1),
-            QueueLimit = 0,
-            AutoReplenishment = true
-        })));
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("auth", new viora_BE.Security.AuthRateLimitPolicy(5));
+    options.AddPolicy("auth-refresh", new viora_BE.Security.AuthRateLimitPolicy(30));
+});
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.OnRejected = async (context, cancellationToken) =>
     {
         context.HttpContext.Response.ContentType = "application/json";
+        var retryAfterSeconds = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter)
+            ? Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)) : 60;
+        context.HttpContext.Response.Headers.RetryAfter = retryAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
         await context.HttpContext.Response.WriteAsJsonAsync(new
         {
             code = "RATE_LIMITED",
-            message = "Quá nhiều yêu cầu. Vui lòng thử lại sau."
+            message = "Quá nhiều yêu cầu. Vui lòng thử lại sau.",
+            retryAfterSeconds
         }, cancellationToken);
     };
 });
@@ -268,6 +281,7 @@ app.UseExceptionHandler(errorApp =>
     });
 });
 
+app.UseForwardedHeaders();
 app.UseHttpsRedirection();
 
 app.UseStaticFiles();

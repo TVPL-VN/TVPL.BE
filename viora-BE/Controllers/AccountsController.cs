@@ -139,7 +139,7 @@ public sealed class AccountsController(
     }
 
     [HttpPost("refresh-token")]
-    [EnableRateLimiting("auth")]
+    [EnableRateLimiting("auth-refresh")]
     [ProducesResponseType<RefreshTokenSuccessResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<LoginMessageResponse>(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult> RefreshToken(
