@@ -23,7 +23,7 @@ public sealed class ArticleRepository(AppDbContext dbContext) : IArticleReposito
 
     public Task<ArticlePublicationAccount?> GetPublicationAccountAsync(Guid userId, CancellationToken cancellationToken) =>
         dbContext.Users.Where(x => x.Id == userId)
-            .Select(x => new ArticlePublicationAccount(x.AccountStyle, x.CanCreateArticle))
+            .Select(x => new ArticlePublicationAccount(x.CanCreateArticle))
             .SingleOrDefaultAsync(cancellationToken);
 
     public Task AddAsync(Post article, CancellationToken cancellationToken) =>

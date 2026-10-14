@@ -176,6 +176,6 @@ public sealed class UserProfileService(
         user.IsVerified,
         user.IdentityStatus,
         user.AccountStyle,
-        ArticleCapabilities.CanPublish(user.AccountStyle),
+        ArticleCapabilities.CanPublish(user),
         ArticleCapabilities.CanManage(user));
 }

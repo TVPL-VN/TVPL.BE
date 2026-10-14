@@ -18,6 +18,12 @@ public static class AdminDecisionRules
         if (status != VerificationStatus.Pending || revision != expected)
             throw new VerificationException(409, "STALE_REVIEW", "Hồ sơ này vừa thay đổi hoặc đã được quản trị viên khác xử lý.");
     }
+    public static bool ArticlePublishingTransition(bool current, bool expected, bool next)
+    {
+        if (current != expected || current == next)
+            throw new VerificationException(409, "STALE_STATE", "Quyền viết bài vừa thay đổi. Hãy tải lại trước khi thao tác.");
+        return next;
+    }
     public static void ContentTransition(PostStatus current, PostStatus next)
     {
         var valid = next switch
@@ -62,6 +68,7 @@ public interface IAdminWorkspaceService
     Task<AdminUserContext> UserContextAsync(Guid id, CancellationToken ct);
     Task<AdminLogSummaryResponse> AuditAsync(Guid id, CancellationToken ct);
     Task UserActionAsync(Guid adminId, Guid id, string action, AdminUserDecisionRequest request, AccountStatus? status, AccountStyle? style, CancellationToken ct);
+    Task UpdateArticlePublishingAsync(Guid adminId, Guid id, bool canCreateArticle, bool expectedCanCreateArticle, string? reason, CancellationToken ct);
     Task ModerateAsync(Guid adminId, Guid id, PostType type, PostStatus status, AdminContentDecisionRequest request, CancellationToken ct);
     Task ReportDecisionAsync(Guid adminId, Guid id, bool approve, AdminReportDecisionRequest request, CancellationToken ct);
 }

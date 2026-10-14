@@ -97,10 +97,10 @@ public interface IArticleRepository
     Task<Result<ArticleResponse>> GetAsync(Guid userId, Guid articleId, CancellationToken cancellationToken);
 }
 
-public sealed record ArticlePublicationAccount(AccountStyle AccountStyle, bool CanCreateArticle)
+public sealed record ArticlePublicationAccount(bool CanCreateArticle)
 {
-    public bool CanPublish => ArticleCapabilities.CanPublish(AccountStyle);
-    public bool CanManage => CanPublish || CanCreateArticle;
+    public bool CanPublish => CanCreateArticle;
+    public bool CanManage => CanCreateArticle;
 }
 
 public static class ArticleAccess

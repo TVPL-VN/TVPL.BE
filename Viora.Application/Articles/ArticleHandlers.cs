@@ -23,7 +23,7 @@ public sealed class CreateArticleHandler(
         {
             throw new CreatePostException(
                 "ARTICLE_CAPABILITY_REQUIRED",
-                "Chỉ luật sư, chuyên gia pháp lý hoặc công ty luật được đăng bài báo.");
+                "Tài khoản chưa được quản trị viên cấp quyền viết báo.");
         }
 
         var article = new Post

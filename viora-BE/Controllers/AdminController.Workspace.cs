@@ -8,6 +8,10 @@ namespace viora_BE.Controllers;
 
 public sealed partial class AdminController
 {
+    [HttpPut("users/{id:guid}/article-publishing")]
+    public Task<IActionResult> UpdateArticlePublishing(Guid id, UpdateAdminArticlePublishingRequest request, CancellationToken ct) =>
+        AdminMutation(async () => await workspace.UpdateArticlePublishingAsync(await AdminId(ct), id, request.CanCreateArticle, request.ExpectedCanCreateArticle, request.Reason, ct));
+
     [HttpGet("dashboard/work")]
     public Task<IActionResult> Work(CancellationToken ct) => AdminRead(() => workspace.OverviewAsync(ct));
 

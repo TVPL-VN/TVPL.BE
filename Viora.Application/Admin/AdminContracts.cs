@@ -92,7 +92,8 @@ public sealed record AdminUserDetailResponse(
     int ReportCount,
     DateTime CreatedAt,
     DateTime? LastLoginAt,
-    AdminIdentityDetailResponse? Identity);
+    AdminIdentityDetailResponse? Identity,
+    bool CanCreateArticle);
 
 public sealed record AdminIdentitySummaryResponse(
     Guid Id,

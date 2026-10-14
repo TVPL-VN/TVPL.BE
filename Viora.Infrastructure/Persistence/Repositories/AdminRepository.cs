@@ -95,7 +95,8 @@ public sealed class AdminRepository(AppDbContext dbContext) : IAdminRepository
                 x.Account.LastLoginAt,
                 x.IdentitySubmissions.OrderByDescending(i => i.CreatedAt)
                     .Select(i => new AdminIdentityDetailResponse(i.Id, i.UserId, x.DisplayName, x.AvatarUrl, i.FullName, i.Birthday, i.IdentityNumber, i.FrontImageUrl, i.BackImageUrl, i.Status, i.RejectReason, i.CreatedAt, i.ReviewedAt))
-                    .FirstOrDefault()))
+                    .FirstOrDefault(),
+                x.CanCreateArticle))
             .FirstOrDefaultAsync(cancellationToken);
     }
 

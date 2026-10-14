@@ -171,6 +171,23 @@ public sealed class AdminWorkspaceService(AppDbContext db, IPrivateFileStorage s
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
     }
 
+    public async Task UpdateArticlePublishingAsync(Guid adminId, Guid id, bool canCreateArticle, bool expectedCanCreateArticle, string? reason, CancellationToken ct)
+    {
+        var note = AdminDecisionRules.Reason(reason);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await RequireAdmin(adminId, ct);
+        var accountId = await db.Users.Where(x => x.Id == id).Select(x => (Guid?)x.AccountId).SingleOrDefaultAsync(ct) ?? throw Missing();
+        await db.Accounts.FromSqlInterpolated($"SELECT * FROM \"Accounts\" WHERE \"Id\" = {accountId} FOR UPDATE").ToListAsync(ct);
+        var user = await db.Users.Include(x => x.Account).SingleAsync(x => x.Id == id, ct);
+        if (user.Account.Role == AccountRole.Admin) throw new VerificationException(403, "STAFF_PROTECTED", "Không thể thay đổi quyền của tài khoản quản trị.");
+        if (user.Account.Status == AccountStatus.Deleted || user.Account.DeletedAt is not null) throw Conflict();
+        var old = user.CanCreateArticle;
+        user.CanCreateArticle = AdminDecisionRules.ArticlePublishingTransition(old, expectedCanCreateArticle, canCreateArticle);
+        Log(adminId, "UpdateArticlePublishingPermission", "User", id, $"Quyền viết báo: {(old ? "Được phép" : "Chưa được phép")} → {(canCreateArticle ? "Được phép" : "Chưa được phép")}. {note}");
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+    }
+
     private async Task<Post> LockPost(Guid id, CancellationToken ct) => (await db.Posts.FromSqlInterpolated($"SELECT * FROM \"Posts\" WHERE \"Id\" = {id} FOR UPDATE").ToListAsync(ct)).SingleOrDefault() ?? throw Missing();
     private static void CheckPost(Post post, PostStatus? expectedStatus, DateTime? expectedUpdatedAt)
     {

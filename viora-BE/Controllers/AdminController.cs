@@ -282,6 +282,7 @@ public sealed partial class AdminController(IMediator mediator, IAdminWorkspaceS
 public sealed record UpdateAdminUserStatusRequest(AccountStatus Status, string? Reason, AccountStatus? ExpectedStatus = null);
 public sealed record UpdateAdminUserVerifyRequest(bool IsVerified);
 public sealed record UpdateAdminUserAccountStyleRequest(AccountStyle AccountStyle, string? Reason = null, AccountStyle? ExpectedAccountStyle = null);
+public sealed record UpdateAdminArticlePublishingRequest(bool CanCreateArticle, bool ExpectedCanCreateArticle, string? Reason);
 public sealed record RejectAdminIdentityRequest(string? Reason);
 public sealed record ApproveAdminReportRequest(string? Action);
 public sealed record RenameAdminHashtagRequest(string Name);
