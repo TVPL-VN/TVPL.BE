@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using System.Data;
+using Npgsql;
 using Microsoft.Extensions.Logging;
 using Viora.Application.Calls;
 using Viora.Domain.Entities;
@@ -9,28 +11,41 @@ public sealed class CallRepository(AppDbContext dbContext, ILogger<CallRepositor
 {
     public async Task<CallResult<CallSessionResponse>> CreateCallAsync(CreateCallCommand command, CancellationToken cancellationToken)
     {
-        var validation = await ValidateCallableConversationAsync(command.ConversationId, command.CallerId, cancellationToken);
-        if (!validation.IsSuccess || validation.Value is null)
+        try
         {
-            return CallResult<CallSessionResponse>.Failure(validation.Error ?? CallError.Validation, validation.Message ?? "Không thể gọi.");
-        }
+            // The busy check and insertion must be one serializable operation.
+            // Concurrent callers may otherwise both observe no active session.
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+            var validation = await ValidateCallableConversationAsync(command.ConversationId, command.CallerId, cancellationToken);
+            if (!validation.IsSuccess || validation.Value is null)
+            {
+                return CallResult<CallSessionResponse>.Failure(validation.Error ?? CallError.Validation, validation.Message ?? "Không thể gọi.");
+            }
 
-        var now = DateTime.UtcNow;
-        var call = new CallSession
+            var now = DateTime.UtcNow;
+            var call = new CallSession
+            {
+                ConversationId = command.ConversationId,
+                CallerId = command.CallerId,
+                ReceiverId = validation.Value.ReceiverId,
+                CallType = command.CallType,
+                Status = CallStatus.Calling,
+                StartedAt = now,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            dbContext.CallSessions.Add(call);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            logger.LogInformation("Call Started. CallId: {CallId}, ConversationId: {ConversationId}.", call.Id, call.ConversationId);
+            return await GetByIdAsync(command.CallerId, call.Id, cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is PostgresException { SqlState: "40001" } ||
+            exception is DbUpdateException { InnerException: PostgresException { SqlState: "40001" } })
         {
-            ConversationId = command.ConversationId,
-            CallerId = command.CallerId,
-            ReceiverId = validation.Value.ReceiverId,
-            CallType = command.CallType,
-            Status = CallStatus.Calling,
-            StartedAt = now,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        dbContext.CallSessions.Add(call);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Call Started. CallId: {CallId}, ConversationId: {ConversationId}.", call.Id, call.ConversationId);
-        return await GetByIdAsync(command.CallerId, call.Id, cancellationToken);
+            return CallResult<CallSessionResponse>.Failure(CallError.InvalidState, "Một cuộc gọi khác vừa bắt đầu. Vui lòng thử lại.");
+        }
     }
 
     public async Task<CallResult<CallSessionResponse>> AcceptCallAsync(
@@ -40,7 +55,7 @@ public sealed class CallRepository(AppDbContext dbContext, ILogger<CallRepositor
         var current = await dbContext.CallSessions
             .AsNoTracking()
             .Where(call => call.Id == command.CallId)
-            .Select(call => new { call.ReceiverId, call.Status })
+            .Select(call => new { call.ReceiverId, call.Status, call.StartedAt })
             .FirstOrDefaultAsync(cancellationToken);
         if (current is null)
         {
@@ -50,14 +65,15 @@ public sealed class CallRepository(AppDbContext dbContext, ILogger<CallRepositor
         {
             return CallResult<CallSessionResponse>.Failure(CallError.Forbidden, "Chỉ người nhận mới được thao tác.");
         }
-        if (current.Status != CallStatus.Calling)
+        if (current.Status != CallStatus.Calling || CallTiming.IsExpired(current.StartedAt, DateTime.UtcNow))
         {
             return CallResult<CallSessionResponse>.Failure(CallError.InvalidState, "Cuộc gọi đã được xử lý trên thiết bị khác.");
         }
 
         var now = DateTime.UtcNow;
+        var cutoff = now - CallTiming.RingingTimeout;
         var updated = await dbContext.CallSessions
-            .Where(call => call.Id == command.CallId && call.Status == CallStatus.Calling)
+            .Where(call => call.Id == command.CallId && call.Status == CallStatus.Calling && call.StartedAt > cutoff)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(call => call.Status, CallStatus.Accepted)
                 .SetProperty(call => call.AnsweredAt, now)

@@ -38,7 +38,8 @@ public sealed class UserSettingsController(IMediator mediator) : ControllerBase
                 request.AllowComment,
                 request.AllowMention,
                 request.Language,
-                request.Theme),
+                request.Theme,
+                request.DisabledNotificationKinds),
             cancellationToken);
         return ToActionResult(result);
     }
@@ -67,4 +68,5 @@ public sealed record UpdateUserSettingsRequest(
     bool? AllowComment,
     bool? AllowMention,
     [param: MaxLength(20)] string? Language,
-    [param: MaxLength(20)] string? Theme);
+    [param: MaxLength(20)] string? Theme,
+    [param: Range(0, 127)] int? DisabledNotificationKinds = null);

@@ -76,6 +76,7 @@ public sealed class UserSettings : AuditableEntity
     public bool AllowMessageEveryone { get; set; } = true;
     public bool AllowComment { get; set; } = true;
     public bool AllowMention { get; set; } = true;
+    public int DisabledNotificationKinds { get; set; }
     public string Language { get; set; } = "vi";
     public string Theme { get; set; } = "light";
     public User User { get; set; } = null!;

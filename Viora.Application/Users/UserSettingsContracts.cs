@@ -24,7 +24,8 @@ public sealed record UpdateUserSettingsCommand(
     bool? AllowComment,
     bool? AllowMention,
     string? Language,
-    string? Theme) : IRequest<UserSettingsResult<UserSettingsResponse>>;
+    string? Theme,
+    int? DisabledNotificationKinds = null) : IRequest<UserSettingsResult<UserSettingsResponse>>;
 
 public sealed record UserSettingsResponse(
     bool IsPrivate,
@@ -32,12 +33,15 @@ public sealed record UserSettingsResponse(
     bool AllowComment,
     bool AllowMention,
     string Language,
-    string Theme);
+    string Theme,
+    int DisabledNotificationKinds = 0);
 
 public interface IUserSettingsRepository
 {
     Task<bool> ActiveUserExistsAsync(Guid userId, CancellationToken cancellationToken);
     Task<UserSettingsResponse> GetOrCreateAsync(Guid userId, CancellationToken cancellationToken);
+    async Task<int> GetDisabledNotificationKindsAsync(Guid userId, CancellationToken cancellationToken) =>
+        (await GetOrCreateAsync(userId, cancellationToken)).DisabledNotificationKinds;
     Task<UserSettingsResponse> UpdateAsync(UpdateUserSettingsCommand command, CancellationToken cancellationToken);
 }
 
@@ -53,6 +57,7 @@ public sealed class UpdateUserSettingsValidator : AbstractValidator<UpdateUserSe
     public UpdateUserSettingsValidator()
     {
         RuleFor(x => x.UserId).NotEmpty();
+        RuleFor(x => x.DisabledNotificationKinds).InclusiveBetween(0, 127);
         RuleFor(x => x.Language)
             .Must(value => value is null || !string.IsNullOrWhiteSpace(value))
             .WithMessage("Language khong duoc rong.")

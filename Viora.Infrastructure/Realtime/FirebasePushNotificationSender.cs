@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
 using System.Text;
 using Viora.Application.Realtime;
+using Viora.Application.Users;
 using DevicePlatform = Viora.Domain.Entities.DevicePlatform;
 
 namespace Viora.Infrastructure.Realtime;
@@ -11,10 +12,16 @@ namespace Viora.Infrastructure.Realtime;
 public sealed class FirebasePushNotificationSender(
     IDeviceTokenRepository deviceTokenRepository,
     IFirebaseMessagingClientFactory firebaseMessagingClientFactory,
-    ILogger<FirebasePushNotificationSender> logger) : IPushNotificationSender
+    ILogger<FirebasePushNotificationSender> logger,
+    IUserSettingsRepository? userSettingsRepository = null) : IPushNotificationSender
 {
     public async Task SendAsync(PushMessage message, CancellationToken cancellationToken)
     {
+        if (userSettingsRepository is not null && !PushNotificationPolicy.IsLifecycle(message.Data))
+        {
+            var disabledKinds = await userSettingsRepository.GetDisabledNotificationKindsAsync(message.UserId, cancellationToken);
+            if (!PushNotificationPolicy.ShouldDeliver(disabledKinds, message.Data)) return;
+        }
         var client = firebaseMessagingClientFactory.CreateClient();
         if (client is null)
         {
@@ -77,38 +84,34 @@ public sealed class FirebasePushNotificationSender(
         CancellationToken cancellationToken)
     {
         var notificationType = GetNotificationType(message);
-        var tokenSuffix = GetTokenSuffix(token);
         var tokenHash = GetTokenHash(token);
 
         try
         {
             logger.LogInformation(
-                "Sending Firebase push. UserId: {UserId}, NotificationType: {NotificationType}, TokenSuffix: {TokenSuffix}, DeviceTokenHash: {DeviceTokenHash}.",
+                "Sending Firebase push. UserId: {UserId}, NotificationType: {NotificationType}, DeviceTokenHash: {DeviceTokenHash}.",
                 userId,
                 notificationType,
-                tokenSuffix,
                 tokenHash);
 
             var messageId = await client.SendAsync(message, token, platform, cancellationToken);
             logger.LogInformation(
-                "Firebase push sent successfully. UserId: {UserId}, NotificationType: {NotificationType}, FirebaseMessageId: {FirebaseMessageId}, TokenSuffix: {TokenSuffix}, DeviceTokenHash: {DeviceTokenHash}.",
+                "Firebase push sent successfully. UserId: {UserId}, NotificationType: {NotificationType}, FirebaseMessageId: {FirebaseMessageId}, DeviceTokenHash: {DeviceTokenHash}.",
                 userId,
                 notificationType,
                 messageId,
-                tokenSuffix,
                 tokenHash);
         }
         catch (FirebasePushTokenInvalidException exception)
         {
             logger.LogWarning(
                 exception,
-                "Firebase token send failed. UserId: {UserId}, NotificationType: {NotificationType}, MessagingErrorCode: {MessagingErrorCode}, ErrorCode: {ErrorCode}, ShouldDeactivate: {ShouldDeactivate}, TokenSuffix: {TokenSuffix}, DeviceTokenHash: {DeviceTokenHash}.",
+                "Firebase token send failed. UserId: {UserId}, NotificationType: {NotificationType}, MessagingErrorCode: {MessagingErrorCode}, ErrorCode: {ErrorCode}, ShouldDeactivate: {ShouldDeactivate}, DeviceTokenHash: {DeviceTokenHash}.",
                 userId,
                 notificationType,
                 exception.MessagingErrorCode,
                 exception.ErrorCode,
                 exception.ShouldDeactivate,
-                tokenSuffix,
                 tokenHash);
             if (exception.ShouldDeactivate)
             {
@@ -119,17 +122,13 @@ public sealed class FirebasePushNotificationSender(
         {
             logger.LogError(
                 exception,
-                "Failed to send Firebase push notification. UserId: {UserId}, NotificationType: {NotificationType}, FirebaseError: {FirebaseError}, TokenSuffix: {TokenSuffix}, DeviceTokenHash: {DeviceTokenHash}.",
+                "Failed to send Firebase push notification. UserId: {UserId}, NotificationType: {NotificationType}, FirebaseError: {FirebaseError}, DeviceTokenHash: {DeviceTokenHash}.",
                 userId,
                 notificationType,
                 GetFirebaseError(exception),
-                tokenSuffix,
                 tokenHash);
         }
     }
-
-    private static string GetTokenSuffix(string token) =>
-        token.Length <= 8 ? token : token[^8..];
 
     private static string GetTokenHash(string token)
     {
@@ -227,7 +226,8 @@ public sealed class FirebaseMessagingClient(FirebaseApp app) : IFirebaseMessagin
             lifecycleType is "CallRejected" or "CallCancelled" or "CallEnded" or "CallAnsweredElsewhere" or
                 "CallMissed" or "CallTimeout" or "GroupCallEnded";
         var isAndroidDataOnly = isAndroidChat || isAndroidIncomingCall;
-        var isDataOnly = isAndroidDataOnly || isWebIncomingCall || isCallLifecycle;
+        // The shared Web worker owns notification presentation and navigation.
+        var isDataOnly = platform == DevicePlatform.Web || isAndroidDataOnly || isCallLifecycle;
         var data = message.Data.ToDictionary(pair => pair.Key, pair => pair.Value);
         if (isDataOnly)
         {
@@ -273,12 +273,12 @@ public sealed class FirebaseMessagingClient(FirebaseApp app) : IFirebaseMessagin
                     Sound = isCallLifecycle ? null : "default"
                 }
             },
-            Webpush = platform == DevicePlatform.Web && (isWebIncomingCall || isCallLifecycle)
+            Webpush = platform == DevicePlatform.Web
                 ? new WebpushConfig
                 {
                     Headers = new Dictionary<string, string>
                     {
-                        ["TTL"] = "30",
+                        ["TTL"] = isWebIncomingCall || isCallLifecycle ? "30" : "14400",
                         ["Urgency"] = "high"
                     }
                 }

@@ -6,6 +6,11 @@ namespace Viora.Infrastructure.Persistence.Repositories;
 
 public sealed class UserSettingsRepository(AppDbContext db) : IUserSettingsRepository
 {
+    public async Task<int> GetDisabledNotificationKindsAsync(Guid userId, CancellationToken cancellationToken) =>
+        await db.UserSettings.AsNoTracking().Where(settings => settings.UserId == userId)
+            .Select(settings => (int?)settings.DisabledNotificationKinds)
+            .SingleOrDefaultAsync(cancellationToken) ?? 0;
+
     public Task<bool> ActiveUserExistsAsync(Guid userId, CancellationToken cancellationToken) =>
         db.Users.AsNoTracking().AnyAsync(user =>
             user.Id == userId &&
@@ -39,6 +44,7 @@ public sealed class UserSettingsRepository(AppDbContext db) : IUserSettingsRepos
         if (command.AllowMessageEveryone.HasValue) settings.AllowMessageEveryone = command.AllowMessageEveryone.Value;
         if (command.AllowComment.HasValue) settings.AllowComment = command.AllowComment.Value;
         if (command.AllowMention.HasValue) settings.AllowMention = command.AllowMention.Value;
+        if (command.DisabledNotificationKinds.HasValue) settings.DisabledNotificationKinds = command.DisabledNotificationKinds.Value;
         if (command.Language is not null) settings.Language = command.Language.Trim();
         if (command.Theme is not null) settings.Theme = command.Theme.Trim().ToLowerInvariant();
 
@@ -64,5 +70,6 @@ public sealed class UserSettingsRepository(AppDbContext db) : IUserSettingsRepos
             settings.AllowComment,
             settings.AllowMention,
             settings.Language,
-            settings.Theme);
+            settings.Theme,
+            settings.DisabledNotificationKinds);
 }

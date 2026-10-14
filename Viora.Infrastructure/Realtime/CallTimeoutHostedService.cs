@@ -14,7 +14,6 @@ public sealed class CallTimeoutHostedService(
     ILogger<CallTimeoutHostedService> logger) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan CallTimeout = TimeSpan.FromSeconds(30);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -32,7 +31,7 @@ public sealed class CallTimeoutHostedService(
             using var scope = scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
-            var cutoff = DateTime.UtcNow - CallTimeout;
+            var cutoff = DateTime.UtcNow - CallTiming.RingingTimeout;
             var callIds = await dbContext.CallSessions
                 .AsNoTracking()
                 .Where(call => call.Status == CallStatus.Calling && call.StartedAt <= cutoff)

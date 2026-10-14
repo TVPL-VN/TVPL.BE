@@ -35,7 +35,7 @@ public sealed record CallSessionResponse(
 public sealed record CallParticipantResponse(Guid Id, string DisplayName, string? AvatarUrl);
 public sealed record IceServersResponse(IReadOnlyList<IceServerResponse> IceServers);
 public sealed record IceServerResponse(IReadOnlyList<string> Urls, string? Username = null, string? Credential = null);
-public sealed record IncomingCallPayload(Guid CallId, Guid ConversationId, CallParticipantResponse Caller, CallType CallType);
+public sealed record IncomingCallPayload(Guid CallId, Guid ConversationId, CallParticipantResponse Caller, CallType CallType, DateTime? ExpiresAt = null);
 public sealed record CallSignalPayload(Guid CallId, Guid ConversationId, Guid FromUserId, object Signal);
 public sealed record CallEndedPayload(Guid CallId, Guid ConversationId, CallStatus Status, int? Duration);
 public sealed record CallAnsweredElsewherePayload(

@@ -112,7 +112,7 @@ public sealed class CallDeliveryService(
 {
     public async Task PublishIncomingAsync(CallSessionResponse call, CancellationToken cancellationToken)
     {
-        var payload = new IncomingCallPayload(call.Id, call.ConversationId, call.Caller, call.CallType);
+        var payload = new IncomingCallPayload(call.Id, call.ConversationId, call.Caller, call.CallType, call.StartedAt.Add(CallTiming.RingingTimeout));
         await realtimeService.SendToUserAsync(call.Receiver.Id, "IncomingCall", payload, cancellationToken);
         logger.LogInformation("Call Started. CallId: {CallId}, CallerId: {CallerId}, ReceiverId: {ReceiverId}.", call.Id, call.Caller.Id, call.Receiver.Id);
 
@@ -126,6 +126,7 @@ public sealed class CallDeliveryService(
             {
                 ["type"] = "IncomingCall",
                 ["callId"] = call.Id.ToString(),
+                ["expiresAt"] = DateTime.SpecifyKind(call.StartedAt.Add(CallTiming.RingingTimeout), DateTimeKind.Utc).ToString("O"),
                 ["callType"] = ((short)call.CallType).ToString(),
                 ["conversationId"] = call.ConversationId.ToString(),
                 ["callerId"] = call.Caller.Id.ToString(),
@@ -193,6 +194,7 @@ public sealed class CallDeliveryService(
             new Dictionary<string, string>
             {
                 ["type"] = "MissedCall",
+                ["callType"] = ((short)call.CallType).ToString(),
                 ["callId"] = call.Id.ToString(),
                 ["conversationId"] = call.ConversationId.ToString()
             }), cancellationToken);
