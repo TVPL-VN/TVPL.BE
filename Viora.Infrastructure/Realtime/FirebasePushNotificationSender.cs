@@ -85,34 +85,41 @@ public sealed class FirebasePushNotificationSender(
     {
         var notificationType = GetNotificationType(message);
         var tokenHash = GetTokenHash(token);
+        var callId = message.Data.TryGetValue("callId", out var id) ? id : null;
 
         try
         {
             logger.LogInformation(
-                "Sending Firebase push. UserId: {UserId}, NotificationType: {NotificationType}, DeviceTokenHash: {DeviceTokenHash}.",
+                "Sending Firebase push. UserId: {UserId}, NotificationType: {NotificationType}, DeviceTokenHash: {DeviceTokenHash}, CallId: {CallId}, Platform: {Platform}.",
                 userId,
                 notificationType,
-                tokenHash);
+                tokenHash,
+                callId,
+                platform);
 
             var messageId = await client.SendAsync(message, token, platform, cancellationToken);
             logger.LogInformation(
-                "Firebase push sent successfully. UserId: {UserId}, NotificationType: {NotificationType}, FirebaseMessageId: {FirebaseMessageId}, DeviceTokenHash: {DeviceTokenHash}.",
+                "FCM accepted push; device presentation is unconfirmed. UserId: {UserId}, NotificationType: {NotificationType}, FirebaseMessageId: {FirebaseMessageId}, DeviceTokenHash: {DeviceTokenHash}, CallId: {CallId}, Platform: {Platform}.",
                 userId,
                 notificationType,
                 messageId,
-                tokenHash);
+                tokenHash,
+                callId,
+                platform);
         }
         catch (FirebasePushTokenInvalidException exception)
         {
             logger.LogWarning(
                 exception,
-                "Firebase token send failed. UserId: {UserId}, NotificationType: {NotificationType}, MessagingErrorCode: {MessagingErrorCode}, ErrorCode: {ErrorCode}, ShouldDeactivate: {ShouldDeactivate}, DeviceTokenHash: {DeviceTokenHash}.",
+                "Firebase token send failed. UserId: {UserId}, NotificationType: {NotificationType}, MessagingErrorCode: {MessagingErrorCode}, ErrorCode: {ErrorCode}, ShouldDeactivate: {ShouldDeactivate}, DeviceTokenHash: {DeviceTokenHash}, CallId: {CallId}, Platform: {Platform}.",
                 userId,
                 notificationType,
                 exception.MessagingErrorCode,
                 exception.ErrorCode,
                 exception.ShouldDeactivate,
-                tokenHash);
+                tokenHash,
+                callId,
+                platform);
             if (exception.ShouldDeactivate)
             {
                 await deviceTokenRepository.DeactivateAsync(token, cancellationToken);
@@ -122,11 +129,13 @@ public sealed class FirebasePushNotificationSender(
         {
             logger.LogError(
                 exception,
-                "Failed to send Firebase push notification. UserId: {UserId}, NotificationType: {NotificationType}, FirebaseError: {FirebaseError}, DeviceTokenHash: {DeviceTokenHash}.",
+                "Failed to send Firebase push notification. UserId: {UserId}, NotificationType: {NotificationType}, FirebaseError: {FirebaseError}, DeviceTokenHash: {DeviceTokenHash}, CallId: {CallId}, Platform: {Platform}.",
                 userId,
                 notificationType,
                 GetFirebaseError(exception),
-                tokenHash);
+                tokenHash,
+                callId,
+                platform);
         }
     }
 
