@@ -229,6 +229,14 @@ public sealed class FirebaseMessagingClient(FirebaseApp app) : IFirebaseMessagin
         // The shared Web worker owns notification presentation and navigation.
         var isDataOnly = platform == DevicePlatform.Web || isAndroidDataOnly || isCallLifecycle;
         var data = message.Data.ToDictionary(pair => pair.Key, pair => pair.Value);
+        var webTtl = isWebIncomingCall || isCallLifecycle ? 30 : 14400;
+        if (isWebIncomingCall && data.TryGetValue("expiresAt", out var expiry))
+        {
+            webTtl = DateTimeOffset.TryParse(expiry, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var expiresAt)
+                ? (int)Math.Clamp(Math.Floor((expiresAt - DateTimeOffset.UtcNow).TotalSeconds), 0, 30)
+                : 0;
+        }
         if (isDataOnly)
         {
             data["title"] = message.Title;
@@ -278,7 +286,7 @@ public sealed class FirebaseMessagingClient(FirebaseApp app) : IFirebaseMessagin
                 {
                     Headers = new Dictionary<string, string>
                     {
-                        ["TTL"] = isWebIncomingCall || isCallLifecycle ? "30" : "14400",
+                        ["TTL"] = webTtl.ToString(System.Globalization.CultureInfo.InvariantCulture),
                         ["Urgency"] = "high"
                     }
                 }

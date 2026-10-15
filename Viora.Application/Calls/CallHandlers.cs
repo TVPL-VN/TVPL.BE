@@ -113,7 +113,9 @@ public sealed class CallDeliveryService(
     public async Task PublishIncomingAsync(CallSessionResponse call, CancellationToken cancellationToken)
     {
         var payload = new IncomingCallPayload(call.Id, call.ConversationId, call.Caller, call.CallType, call.StartedAt.Add(CallTiming.RingingTimeout));
-        await realtimeService.SendToUserAsync(call.Receiver.Id, "IncomingCall", payload, cancellationToken);
+        await TryDeliverRealtimeAsync(
+            () => realtimeService.SendToUserAsync(call.Receiver.Id, "IncomingCall", payload, cancellationToken),
+            call.Id, cancellationToken);
         logger.LogInformation("Call Started. CallId: {CallId}, CallerId: {CallerId}, ReceiverId: {ReceiverId}.", call.Id, call.Caller.Id, call.Receiver.Id);
 
         // Another device for the same user may be suspended while one connection
@@ -141,7 +143,9 @@ public sealed class CallDeliveryService(
         CancellationToken cancellationToken)
     {
         logger.LogInformation("Call Accepted. CallId: {CallId}.", call.Id);
-        await realtimeService.SendToUserAsync(call.Caller.Id, "CallAccepted", call, cancellationToken);
+        await TryDeliverRealtimeAsync(
+            () => realtimeService.SendToUserAsync(call.Caller.Id, "CallAccepted", call, cancellationToken),
+            call.Id, cancellationToken);
         if (string.IsNullOrWhiteSpace(acceptedConnectionId)) return;
 
         var payload = new CallAnsweredElsewherePayload(
@@ -149,11 +153,11 @@ public sealed class CallDeliveryService(
             call.ConversationId,
             call.Status,
             acceptedConnectionId);
-        await realtimeService.SendToUserAsync(
+        await TryDeliverRealtimeAsync(() => realtimeService.SendToUserAsync(
             call.Receiver.Id,
             "CallAnsweredElsewhere",
             payload,
-            cancellationToken);
+            cancellationToken), call.Id, cancellationToken);
         await pushNotificationSender.SendAsync(new PushMessage(
             call.Receiver.Id,
             "Call updated",
@@ -172,7 +176,9 @@ public sealed class CallDeliveryService(
     {
         logger.LogInformation("Call {EventName}. CallId: {CallId}, Duration: {Duration}.", eventName, call.Id, call.Duration);
         var payload = new CallEndedPayload(call.Id, call.ConversationId, call.Status, call.Duration);
-        await realtimeService.SendToUsersAsync([call.Caller.Id, call.Receiver.Id], eventName, payload, cancellationToken);
+        await TryDeliverRealtimeAsync(
+            () => realtimeService.SendToUsersAsync([call.Caller.Id, call.Receiver.Id], eventName, payload, cancellationToken),
+            call.Id, cancellationToken);
         await PublishLifecyclePushAsync(call, call.Caller.Id, eventName, cancellationToken);
         await PublishLifecyclePushAsync(call, call.Receiver.Id, eventName, cancellationToken);
         await PublishHistoryMessageAsync(call, cancellationToken);
@@ -182,8 +188,12 @@ public sealed class CallDeliveryService(
     {
         logger.LogInformation("Call Missed. CallId: {CallId}.", call.Id);
         var payload = new CallEndedPayload(call.Id, call.ConversationId, call.Status, call.Duration);
-        await realtimeService.SendToUserAsync(call.Caller.Id, "CallTimeout", payload, cancellationToken);
-        await realtimeService.SendToUserAsync(call.Receiver.Id, "CallMissed", payload, cancellationToken);
+        await TryDeliverRealtimeAsync(
+            () => realtimeService.SendToUserAsync(call.Caller.Id, "CallTimeout", payload, cancellationToken),
+            call.Id, cancellationToken);
+        await TryDeliverRealtimeAsync(
+            () => realtimeService.SendToUserAsync(call.Receiver.Id, "CallMissed", payload, cancellationToken),
+            call.Id, cancellationToken);
         await PublishLifecyclePushAsync(call, call.Caller.Id, "CallTimeout", cancellationToken);
         await PublishLifecyclePushAsync(call, call.Receiver.Id, "CallMissed", cancellationToken);
         await PublishHistoryMessageAsync(call, cancellationToken);
@@ -198,6 +208,18 @@ public sealed class CallDeliveryService(
                 ["callId"] = call.Id.ToString(),
                 ["conversationId"] = call.ConversationId.ToString()
             }), cancellationToken);
+    }
+
+    private async Task TryDeliverRealtimeAsync(Func<Task> send, Guid callId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await send();
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(exception, "Realtime call delivery failed; continuing push fallback. CallId: {CallId}.", callId);
+        }
     }
 
     private Task PublishLifecyclePushAsync(
