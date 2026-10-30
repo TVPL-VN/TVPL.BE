@@ -141,6 +141,8 @@ public interface IPasswordHasher
 public interface ITokenService
 {
     IssuedAccountTokens CreateTokens(Account account, Guid? sessionId = null);
+    IssuedAccountTokens CreateAnktTokens(Account account, AnktTokenBinding binding) =>
+        throw new NotSupportedException("ANKT token issuance is not configured.");
     string HashRefreshToken(string refreshToken);
 }
 

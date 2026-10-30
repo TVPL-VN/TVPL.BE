@@ -10,9 +10,10 @@ internal sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
     {
         builder.ToTable("Accounts", table => table.HasCheckConstraint(
             "CK_Accounts_EmailOrPhone",
-            "\"Email\" IS NOT NULL OR \"Phone\" IS NOT NULL"));
+            "\"Email\" IS NOT NULL OR \"Phone\" IS NOT NULL OR COALESCE(\"IdentityProvider\", '') = 'ankt'"));
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Email).HasMaxLength(255);
+        builder.Property(x => x.IdentityProvider).HasMaxLength(32);
         builder.Property(x => x.Phone).HasMaxLength(20);
         builder.Property(x => x.PasswordHash);
         builder.Property(x => x.Role).HasDefaultValue(AccountRole.User);

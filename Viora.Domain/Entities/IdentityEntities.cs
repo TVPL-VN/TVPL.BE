@@ -2,6 +2,7 @@ namespace Viora.Domain.Entities;
 
 public sealed class Account : AuditableEntity
 {
+    public string? IdentityProvider { get; set; }
     public string? Email { get; set; }
     public string? Phone { get; set; }
     public string? PasswordHash { get; set; }

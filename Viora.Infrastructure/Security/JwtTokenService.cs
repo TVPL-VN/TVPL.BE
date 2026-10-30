@@ -43,14 +43,27 @@ public sealed class JwtTokenService : ITokenService
     }
 
     public IssuedAccountTokens CreateTokens(Account account, Guid? sessionId = null)
+        => CreateTokensCore(account, sessionId, null);
+
+    public IssuedAccountTokens CreateAnktTokens(Account account, AnktTokenBinding binding)
+        => CreateTokensCore(account, binding.SessionId, binding);
+
+    private IssuedAccountTokens CreateTokensCore(Account account, Guid? sessionId, AnktTokenBinding? binding)
     {
         var now = DateTimeOffset.UtcNow;
         var accessExpiresAt = now.AddMinutes(options.AccessTokenMinutes);
         var refreshToken = Base64Url(RandomNumberGenerator.GetBytes(64));
         var refreshExpiresAt = now.AddDays(options.RefreshTokenDays);
+        if (binding is not null)
+        {
+            var grantExpiry = new DateTimeOffset(DateTime.SpecifyKind(binding.ExpiresAt, DateTimeKind.Utc));
+            if (grantExpiry <= now) throw new AnktAuthenticationException("ANKT_GRANT_EXPIRED");
+            if (accessExpiresAt > grantExpiry) accessExpiresAt = grantExpiry;
+            if (refreshExpiresAt > grantExpiry) refreshExpiresAt = grantExpiry;
+        }
         return new IssuedAccountTokens(
             new AccountTokens(
-                CreateToken(account, "access", now, accessExpiresAt),
+                CreateToken(account, "access", now, accessExpiresAt, binding),
                 refreshToken,
                 accessExpiresAt.UtcDateTime,
                 refreshExpiresAt.UtcDateTime,
@@ -65,7 +78,8 @@ public sealed class JwtTokenService : ITokenService
         Account account,
         string tokenType,
         DateTimeOffset issuedAt,
-        DateTimeOffset expiresAt)
+        DateTimeOffset expiresAt,
+        AnktTokenBinding? binding)
     {
         var payload = new Dictionary<string, object?>
         {
@@ -85,6 +99,8 @@ public sealed class JwtTokenService : ITokenService
         {
             payload["user_id"] = account.User.Id.ToString();
         }
+
+        if (binding is not null) payload["ankt_session"] = binding.SessionId.ToString();
 
         var unsignedToken = $"{Base64Url(Header)}.{Base64Url(JsonSerializer.SerializeToUtf8Bytes(payload))}";
         using var hmac = new HMACSHA256(signingKey);

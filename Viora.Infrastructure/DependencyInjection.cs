@@ -46,6 +46,20 @@ public static class DependencyInjection
         }
 
         services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
+        services.AddOptions<AnktMiniAppOptions>()
+            .Bind(configuration.GetSection(AnktMiniAppOptions.SectionName))
+            .Validate(options => options.IsValid(), "Invalid ANKT configuration; use registered credentials and exact HTTPS origins.")
+            .ValidateOnStart();
+        services.AddHttpClient<IAnktPartnerClient, AnktPartnerClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(10);
+            client.MaxResponseContentBufferSize = 64 * 1024;
+        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+        {
+            AllowAutoRedirect = false, UseCookies = false
+        }).RemoveAllLoggers();
+        services.AddScoped<IAnktLoginService, AnktLoginService>();
+        services.AddScoped<IAnktSessionValidator, AnktSessionValidator>();
         var jwtOptions = new JwtOptions
         {
             Key = configuration["Jwt:Key"] ?? string.Empty,

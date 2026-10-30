@@ -38,6 +38,10 @@ namespace Viora.Infrastructure.Persistence.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<string>("IdentityProvider")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<DateTime?>("LastLoginAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -74,7 +78,7 @@ namespace Viora.Infrastructure.Persistence.Migrations
 
                     b.ToTable("Accounts", null, t =>
                         {
-                            t.HasCheckConstraint("CK_Accounts_EmailOrPhone", "\"Email\" IS NOT NULL OR \"Phone\" IS NOT NULL");
+                            t.HasCheckConstraint("CK_Accounts_EmailOrPhone", "\"Email\" IS NOT NULL OR \"Phone\" IS NOT NULL OR COALESCE(\"IdentityProvider\", '') = 'ankt'");
                         });
                 });
 
@@ -113,6 +117,84 @@ namespace Viora.Infrastructure.Persistence.Migrations
                     b.HasIndex("CreatedAt");
 
                     b.ToTable("AdminLogs", (string)null);
+                });
+
+            modelBuilder.Entity("Viora.Domain.Entities.AnktGrant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("IdentityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProviderSessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Revoked")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("IdentityId");
+
+                    b.ToTable("AnktGrants", (string)null);
+                });
+
+            modelBuilder.Entity("Viora.Domain.Entities.AnktIdentity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AnktUserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("MiniAppId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ProfileJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId")
+                        .IsUnique();
+
+                    b.HasIndex("MiniAppId", "Environment", "AnktUserId")
+                        .IsUnique();
+
+                    b.ToTable("AnktIdentities", (string)null);
                 });
 
             modelBuilder.Entity("Viora.Domain.Entities.ArticleBlock", b =>
@@ -1969,11 +2051,11 @@ namespace Viora.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(true);
 
-                    b.Property<int>("DisabledNotificationKinds")
-                        .HasColumnType("integer");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DisabledNotificationKinds")
+                        .HasColumnType("integer");
 
                     b.Property<bool>("IsPrivate")
                         .ValueGeneratedOnAdd()
@@ -2160,6 +2242,28 @@ namespace Viora.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Admin");
+                });
+
+            modelBuilder.Entity("Viora.Domain.Entities.AnktGrant", b =>
+                {
+                    b.HasOne("Viora.Domain.Entities.AnktIdentity", "Identity")
+                        .WithMany()
+                        .HasForeignKey("IdentityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Identity");
+                });
+
+            modelBuilder.Entity("Viora.Domain.Entities.AnktIdentity", b =>
+                {
+                    b.HasOne("Viora.Domain.Entities.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Account");
                 });
 
             modelBuilder.Entity("Viora.Domain.Entities.ArticleBlock", b =>

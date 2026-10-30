@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using System.Net;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
@@ -133,11 +134,21 @@ builder.Services
                 }
                 var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
                 var account = await db.Accounts.AsNoTracking().Where(x => x.Id == accountId)
-                    .Select(x => new { x.Status, x.DeletedAt, x.SessionVersion }).SingleOrDefaultAsync(context.HttpContext.RequestAborted);
+                    .Select(x => new { x.Status, x.DeletedAt, x.SessionVersion, x.IdentityProvider }).SingleOrDefaultAsync(context.HttpContext.RequestAborted);
                 var claim = context.Principal?.FindFirst("session_version")?.Value;
                 var version = claim is null ? 0 : int.TryParse(claim, out var parsed) ? parsed : -1;
                 if (account is null || account.Status != AccountStatus.Active || account.DeletedAt is not null || version != account.SessionVersion)
+                {
                     context.Fail("Account inactive or session revoked.");
+                    return;
+                }
+                if (account.IdentityProvider == "ankt" || context.Principal?.HasClaim(x => x.Type == "ankt_session") == true)
+                {
+                    var sessions = context.HttpContext.RequestServices.GetRequiredService<Viora.Application.Accounts.IAnktSessionValidator>();
+                    if (!Guid.TryParse(context.Principal?.FindFirst("ankt_session")?.Value, out var localSession) ||
+                        await sessions.ValidateAsync(localSession, accountId, context.HttpContext.RequestAborted) is null)
+                        context.Fail("ANKT grant expired or revoked.");
+                }
             },
             OnMessageReceived = context =>
             {
@@ -185,7 +196,8 @@ builder.Services.AddRateLimiter(options =>
         }, cancellationToken);
     };
 });
-builder.Services.AddSignalR();
+builder.Services.AddScoped<viora_BE.Security.AnktHubFilter>();
+builder.Services.AddSignalR(options => options.AddFilter<viora_BE.Security.AnktHubFilter>());
 builder.Services.AddInfrastructure(builder.Configuration);
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
@@ -326,8 +338,8 @@ app.MapGet("/group/{inviteCode}", (string inviteCode) =>
 });
 
 app.MapControllers();
-app.MapHub<RealtimeHub>("/hubs/realtime");
-app.MapHub<CallHub>("/hubs/calls");
+app.MapHub<RealtimeHub>("/hubs/realtime", options => options.CloseOnAuthenticationExpiration = true);
+app.MapHub<CallHub>("/hubs/calls", options => options.CloseOnAuthenticationExpiration = true);
 
 app.Run();
 

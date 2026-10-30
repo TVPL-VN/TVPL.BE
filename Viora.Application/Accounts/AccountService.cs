@@ -12,7 +12,8 @@ public sealed class AccountService(
     IPasswordHasher passwordHasher,
     ITokenService? tokenService = null,
     IValidator<ChangePasswordCommand>? changePasswordValidator = null,
-    ILogger<AccountService>? logger = null) : IAccountService
+    ILogger<AccountService>? logger = null,
+    IAnktSessionValidator? anktSessions = null) : IAccountService
 {
     public async Task<PagedAccountResponse> ListAsync(int page, int pageSize, CancellationToken cancellationToken)
     {
@@ -168,7 +169,16 @@ public sealed class AccountService(
         }
 
         var sessionId = current.SessionId ?? Guid.NewGuid();
-        var issued = tokens.CreateTokens(current.Account, sessionId);
+        AnktTokenBinding? anktBinding = null;
+        if (current.Account.IdentityProvider == "ankt")
+        {
+            if (anktSessions is null || current.SessionId is null) return InvalidRefreshToken();
+            anktBinding = await anktSessions.ValidateAsync(sessionId, current.AccountId, cancellationToken);
+            if (anktBinding is null) return InvalidRefreshToken();
+        }
+        var issued = anktBinding is null
+            ? tokens.CreateTokens(current.Account, sessionId)
+            : tokens.CreateAnktTokens(current.Account, anktBinding);
         var replacement = new RefreshToken
         {
             Account = current.Account,
